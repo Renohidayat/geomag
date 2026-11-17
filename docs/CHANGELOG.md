@@ -5,6 +5,10 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Implementasi penyimpanan lokal SQLite via Drift sesuai ERD (#2)
+- Skema lengkap: Devices, CalibrationProfiles, Surveys, Stations, Samples, StationResults, Anomalies (#2)
+- Aturan append-only pada tabel Samples untuk integritas data mentah (#2)
+- Unit test database komprehensif menguji relasi foreign keys, batch insert, dan query helper (#2)
 - Plugin Kotlin native untuk membaca `TYPE_MAGNETIC_FIELD_UNCALIBRATED` via `EventChannel` dengan fallback ke `TYPE_MAGNETIC_FIELD` (#1)
 - Timestamp nanodetik (`event.timestamp`) pada setiap sampel data (#1)
 - Model data `MagnetometerSample` dan `SensorInfo` di Flutter (#1)
