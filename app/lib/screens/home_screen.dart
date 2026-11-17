@@ -1,16 +1,20 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
+import '../database/app_database.dart';
 import '../models/magnetometer_sample.dart';
 import '../models/sensor_info.dart';
 import '../services/magnetometer_service.dart';
+import '../services/recording_session_service.dart';
 
 /// Layar utama: menampilkan data magnetometer real-time dan metrik instrumen.
 class HomeScreen extends StatefulWidget {
   final MagnetometerService? service;
+  final AppDatabase? database;
 
-  const HomeScreen({super.key, this.service});
+  const HomeScreen({super.key, this.service, this.database});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -18,12 +22,15 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late final MagnetometerService _magnetometerService;
+  late final AppDatabase _database;
+  late final RecordingSessionService _recordingSessionService;
 
   SensorInfo? _sensorInfo;
   MagnetometerSample? _lastSample;
   StreamSubscription<MagnetometerSample>? _subscription;
   bool _isRecording = false;
   String? _errorMessage;
+  String? _exportedFilePath;
   DateTime? _recordingStartTime;
   Timer? _durationTimer;
   Duration _recordingDuration = Duration.zero;
@@ -37,6 +44,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _magnetometerService = widget.service ?? MagnetometerService();
+    _database = widget.database ?? AppDatabase();
+    _recordingSessionService = RecordingSessionService(database: _database);
     _loadSensorInfo();
   }
 
@@ -44,6 +53,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _durationTimer?.cancel();
     _subscription?.cancel();
+    if (widget.database == null) {
+      _database.close();
+    }
     super.dispose();
   }
 
@@ -56,13 +68,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _startRecording() {
+  Future<void> _startRecording() async {
     _magnetometerService.resetStats();
     _displaySampleCount = 0;
     _sumTotalFieldMicroT = 0.0;
     _sumTotalFieldSqMicroT = 0.0;
     _recordingStartTime = DateTime.now();
     _recordingDuration = Duration.zero;
+    _exportedFilePath = null;
 
     _durationTimer?.cancel();
     _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -72,6 +85,10 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     });
+
+    await _recordingSessionService.startSession(
+      sampleStream: _magnetometerService.sampleStream,
+    );
 
     _subscription = _magnetometerService.sampleStream.listen(
       (sample) {
@@ -97,12 +114,38 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _stopRecording() {
+  Future<void> _stopRecording() async {
     _durationTimer?.cancel();
     _durationTimer = null;
     _subscription?.cancel();
     _subscription = null;
     setState(() => _isRecording = false);
+    await _recordingSessionService.stopSession();
+  }
+
+  Future<void> _exportCsv() async {
+    try {
+      final outputDir = await getApplicationDocumentsDirectory();
+      final file = await _recordingSessionService.exportCurrentStationToCsv(outputDir);
+      if (mounted) {
+        setState(() => _exportedFilePath = file.path);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('CSV berhasil diekspor: ${file.path}'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal mengekspor CSV: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   /// Simpangan baku total field (mikroTesla).
@@ -144,12 +187,42 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+            if (_exportedFilePath != null)
+              Card(
+                color: Colors.green.withValues(alpha: 0.15),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: Colors.green),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'File CSV tersimpan:\n$_exportedFilePath',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             if (_lastSample != null) ...[
               _buildMagDataCard(theme),
               const SizedBox(height: 12),
               _buildStatsCard(theme),
               const SizedBox(height: 12),
               _buildDeviceStatusCard(theme),
+              if (!_isRecording && _displaySampleCount > 0) ...[
+                const SizedBox(height: 12),
+                ElevatedButton.icon(
+                  onPressed: _exportCsv,
+                  icon: const Icon(Icons.file_download),
+                  label: const Text('Ekspor Data Stasiun ke CSV'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ],
             ],
             if (!_isRecording && _lastSample == null)
               Padding(
@@ -319,7 +392,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 '${_stdDevNt.toStringAsFixed(1)} nT (n=$_displaySampleCount)',
               ),
               const SizedBox(height: 6),
-              // Bar kestabilan visual
               LinearProgressIndicator(
                 value: (_stdDevNt / 1000.0).clamp(0.0, 1.0),
                 backgroundColor: Colors.green.withValues(alpha: 0.2),

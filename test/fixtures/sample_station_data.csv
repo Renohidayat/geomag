@@ -1,0 +1,6 @@
+timestamp_ns,raw_x_micro_t,raw_y_micro_t,raw_z_micro_t,bias_x_micro_t,bias_y_micro_t,bias_z_micro_t,accuracy,is_uncalibrated,battery_temp_c,is_charging,is_screen_on
+1700000000000000,24.52,-11.18,41.95,0.05,-0.12,0.22,3,true,31.2,false,true
+1700000020000000,24.55,-11.20,41.93,0.05,-0.12,0.22,3,true,31.2,false,true
+1700000040000000,24.51,-11.17,41.96,0.05,-0.12,0.22,3,true,31.3,false,true
+1700000060000000,24.53,-11.19,41.94,0.05,-0.12,0.22,3,true,31.3,false,true
+1700000080000000,24.54,-11.21,41.95,0.05,-0.12,0.22,3,true,31.3,false,true
