@@ -1,0 +1,59 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub/
+build/
+*.dart_tool
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+# Android
+*.apk
+*.aab
+*.jks
+*.keystore
+key.properties
+local.properties
+.gradle/
+app/android/.gradle/
+app/android/app/build/
+app/android/build/
+app/android/.cxx/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+venv/
+.venv/
+
+# Rahasia & kredensial
+.env
+.env.*
+*.p12
+*.pem
+
+# Data survei besar (simpan sampel kecil di test/fixtures/)
+*.csv
+!test/fixtures/*.csv
+!reference/tests/fixtures/*.csv
+
+# Antigravity
+.gemini/

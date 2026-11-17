@@ -1,0 +1,29 @@
+# Ambang dan parameter
+# Diisi dari hasil uji Fase 1. Jangan hard-code di kode.
+# Nilai di bawah adalah placeholder; ganti setelah data nyata tersedia.
+
+noise:
+  # Lantai noise default (nT), diperbarui per model HP setelah uji
+  default_floor_nt: 500.0
+  # Durasi rekam diam untuk uji noise (detik)
+  noise_test_duration_s: 300
+
+calibration:
+  # Jumlah minimum sampel untuk fit ellipsoid
+  min_samples: 500
+  # Residu maksimum yang diterima (nT)
+  max_residual_nt: 1000.0
+
+station:
+  # Durasi rekam default per stasiun (detik)
+  record_duration_s: 30
+  # Simpangan baku maksimum untuk menerima stasiun (nT)
+  max_stddev_nt: 1000.0
+  # Jumlah minimum sampel valid per stasiun
+  min_samples: 100
+
+sensor:
+  # Laju sampling target (Hz)
+  target_rate_hz: 50
+  # Tipe sensor Android
+  sensor_type: TYPE_MAGNETIC_FIELD_UNCALIBRATED
