@@ -5,6 +5,9 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Implementasi estimasi lantai noise dan Allan deviation (`AllanDeviationService` di Dart & `reference/allan_deviation.py` di Python) (#11)
+- Layar interaktif `NoiseTestScreen` dengan protokol uji perangkat diam dan penyimpanan lantai noise ke profil perangkat (#11)
+- Pengujian cross-language Dart vs Python untuk algoritma Allan deviation (#11)
 - Implementasi `SensorDiagnosticsService` (Dart) dan `reference/diagnostics.py` (Python) untuk analisis laju sampling nyata, jitter, dan deteksi gap (#5)
 - Pengujian cross-language Dart vs Python untuk diagnostik timing sensor (#5)
 - Laporan pengujian dan verifikasi Fase 0 di `docs/laporan_uji_fase_0.md` (#5)
