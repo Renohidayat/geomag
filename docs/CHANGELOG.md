@@ -5,6 +5,9 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Modul gridding 2D Inverse Distance Weighting (`GriddingService` di Dart & `reference/gridding.py` di Python) untuk interpolasi spasial titik stasiun tak beraturan ke matriks grid (#28)
+- Modul perhitungan magnitudo Analytic Signal 3D (`AnalyticSignalService` di Dart & `reference/analytic_signal.py` di Python) dengan turunan horizontal diferensial berpusat dan turunan vertikal transformasi Fourier 2D (FFT) (#28)
+- Unit test komparasi Dart vs Python untuk gridding simpul eksak dan lokalisasi puncak $|AS|$ pada anomali dipol vertikal (#28)
 - Modul tie-line crossover levelling (`LevellingService` di Dart & `reference/levelling.py` di Python) dengan deteksi perpotongan 2D dan penyelesaian kuadrat terkecil teratur (regularized least squares) (#27)
 - Evaluasi metrik crossover error ($RMSE_{before}$ vs $RMSE_{after}$) dan koreksi bias per lintasan survei (#27)
 - Unit test komparasi Dart vs Python untuk levelling pada data grid sintetis (#27)
