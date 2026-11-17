@@ -5,6 +5,8 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Penyempurnaan antarmuka real-time dengan timer durasi rekam, indikator visual kestabilan sinyal $\sigma$, dan peringatan pengisian daya (#3)
+- Widget test interaktif untuk verifikasi alur mulai/berhenti rekam dan visualisasi stream sampel (#3)
 - Implementasi penyimpanan lokal SQLite via Drift sesuai ERD (#2)
 - Skema lengkap: Devices, CalibrationProfiles, Surveys, Stations, Samples, StationResults, Anomalies (#2)
 - Aturan append-only pada tabel Samples untuk integritas data mentah (#2)
