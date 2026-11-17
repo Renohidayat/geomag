@@ -5,6 +5,9 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Implementasi fit ellipsoid robust (`EllipsoidCalibrationService` di Dart & `reference/ellipsoid_fit.py` di Python) untuk kalibrasi hard iron b dan soft iron A (#12)
+- Unit test komparasi Dart vs Python untuk fit ellipsoid robust pada bola sempurna, deformasi skala, dan penolakan outlier ekstrem (#12)
+- Metode penyimpanan profil kalibrasi ke tabel `CalibrationProfiles` database Drift dan koreksi sampel real-time (#12)
 - Implementasi estimasi lantai noise dan Allan deviation (`AllanDeviationService` di Dart & `reference/allan_deviation.py` di Python) (#11)
 - Layar interaktif `NoiseTestScreen` dengan protokol uji perangkat diam dan penyimpanan lantai noise ke profil perangkat (#11)
 - Pengujian cross-language Dart vs Python untuk algoritma Allan deviation (#11)
