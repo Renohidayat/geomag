@@ -10,6 +10,7 @@ import '../services/magnetometer_service.dart';
 import '../services/recording_session_service.dart';
 import 'calibration_screen.dart';
 import 'noise_test_screen.dart';
+import 'station_survey_screen.dart';
 
 /// Layar utama: menampilkan data magnetometer real-time dan metrik instrumen.
 class HomeScreen extends StatefulWidget {
@@ -171,6 +172,21 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('GeoMag - Survei Magnetik'),
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.location_on_outlined),
+            tooltip: 'Survei Stasiun Rover',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => StationSurveyScreen(
+                    service: _magnetometerService,
+                    database: _database,
+                  ),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.screen_rotation_outlined),
             tooltip: 'Kalibrasi Magnetometer',
