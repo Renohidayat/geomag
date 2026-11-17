@@ -5,6 +5,9 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Implementasi `SensorDiagnosticsService` (Dart) dan `reference/diagnostics.py` (Python) untuk analisis laju sampling nyata, jitter, dan deteksi gap (#5)
+- Pengujian cross-language Dart vs Python untuk diagnostik timing sensor (#5)
+- Laporan pengujian dan verifikasi Fase 0 di `docs/laporan_uji_fase_0.md` (#5)
 - Implementasi `CsvExportService` untuk format dan ekspor file CSV sampel magnetometer mentah (#4)
 - Implementasi `RecordingSessionService` dengan batch buffering untuk perekaman frekuensi tinggi dan jaminan zero data loss (#4)
 - Integrasi penyimpanan otomatis sesi rekam ke SQLite dan tombol ekspor CSV pada `HomeScreen` (#4)
