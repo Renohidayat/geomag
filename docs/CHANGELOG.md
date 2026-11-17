@@ -5,6 +5,7 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Laporan pengujian dan verifikasi Fase 1 (Noise dan Kalibrasi Ellipsoid) di `docs/laporan_uji_fase_1.md`
 - Layar panduan kalibrasi interaktif `CalibrationScreen` dengan visualisasi bola orientasi 3D dan indikator cakupan sektor real-time (#13)
 - `SphereCoverageTracker` untuk membagi ruang orientasi 3D ke dalam 18 sektor dan mendeteksi ketercakupan rotasi (#13)
 - Pointer arah sensor real-time dengan efek kedalaman (depan vs belakang bola) dan integrasi tombol kalibrasi di `HomeScreen` (#13)
