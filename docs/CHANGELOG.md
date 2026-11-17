@@ -5,6 +5,10 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Layar panduan kalibrasi interaktif `CalibrationScreen` dengan visualisasi bola orientasi 3D dan indikator cakupan sektor real-time (#13)
+- `SphereCoverageTracker` untuk membagi ruang orientasi 3D ke dalam 18 sektor dan mendeteksi ketercakupan rotasi (#13)
+- Pointer arah sensor real-time dengan efek kedalaman (depan vs belakang bola) dan integrasi tombol kalibrasi di `HomeScreen` (#13)
+- Widget test dan unit test komprehensif untuk pelacak cakupan bola dan layar kalibrasi (#13)
 - Implementasi fit ellipsoid robust (`EllipsoidCalibrationService` di Dart & `reference/ellipsoid_fit.py` di Python) untuk kalibrasi hard iron b dan soft iron A (#12)
 - Unit test komparasi Dart vs Python untuk fit ellipsoid robust pada bola sempurna, deformasi skala, dan penolakan outlier ekstrem (#12)
 - Metode penyimpanan profil kalibrasi ke tabel `CalibrationProfiles` database Drift dan koreksi sampel real-time (#12)
