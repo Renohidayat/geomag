@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../database/app_database.dart';
 import '../services/analytic_signal_service.dart';
 import '../services/gridding_service.dart';
+import '../services/qgis_export_service.dart';
 
 /// Jenis layer visualisasi pada peta anomali magnetik.
 enum MapLayerType {
@@ -53,12 +54,14 @@ class AnomalyMapScreen extends StatefulWidget {
   final AppDatabase database;
   final GriddingService griddingService;
   final AnalyticSignalService analyticSignalService;
+  final QgisExportService exportService;
 
   const AnomalyMapScreen({
     super.key,
     required this.database,
     this.griddingService = const GriddingService(),
     this.analyticSignalService = const AnalyticSignalService(),
+    this.exportService = const QgisExportService(),
   });
 
   @override
@@ -285,6 +288,11 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
       appBar: AppBar(
         title: const Text('Peta Anomali Geomagnetik'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.file_download_outlined),
+            tooltip: 'Ekspor Data QGIS/GIS',
+            onPressed: _showExportDialog,
+          ),
           IconButton(
             icon: const Icon(Icons.center_focus_strong),
             tooltip: 'Reset Zoom & Posisi',
@@ -534,6 +542,214 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
         Text(val, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
       ],
     );
+  }
+
+  void _showExportDialog() {
+    final activeGrid = _currentActiveGrid;
+    final theme = Theme.of(context);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.download, color: Colors.blueAccent),
+                const SizedBox(width: 8),
+                Text(
+                  'Ekspor Data QGIS / GIS',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Pilih format file geospasial untuk visualisasi di software GIS profesional (QGIS, ArcGIS, Oasis Montaj):',
+              style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.grid_on, color: Colors.orange),
+              title: const Text('ESRI ASCII Grid (.asc)'),
+              subtitle: Text(
+                'Raster matriks 2D interpolasi (${_currentLayerTitle()})',
+                style: const TextStyle(fontSize: 11),
+              ),
+              enabled: activeGrid != null,
+              onTap: () {
+                Navigator.pop(ctx);
+                _handleExportAsciiGrid();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.place, color: Colors.green),
+              title: const Text('GeoJSON Titik Stasiun (.geojson)'),
+              subtitle: const Text(
+                'Layer vektor WGS-84 titik koordinat dan seluruh atribut stasiun',
+                style: TextStyle(fontSize: 11),
+              ),
+              enabled: _stations.isNotEmpty,
+              onTap: () {
+                Navigator.pop(ctx);
+                _handleExportGeoJson();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.table_chart, color: Colors.blue),
+              title: const Text('CSV Anomali Terpadu (.csv)'),
+              subtitle: const Text(
+                'Tabel terintegrasi B_obs, B_diurnal, F_IGRF, dan Delta T',
+                style: TextStyle(fontSize: 11),
+              ),
+              enabled: _stations.isNotEmpty,
+              onTap: () {
+                Navigator.pop(ctx);
+                _handleExportCsv();
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.folder_zip, color: Colors.purple),
+              title: const Text('Ekspor Semua Paket GIS (Lengkap)'),
+              subtitle: const Text(
+                'Simpan .asc, .geojson, dan .csv sekaligus ke memori perangkat',
+                style: TextStyle(fontSize: 11),
+              ),
+              enabled: activeGrid != null && _stations.isNotEmpty,
+              onTap: () {
+                Navigator.pop(ctx);
+                _handleExportAll();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _currentLayerTitle() {
+    switch (_selectedLayer) {
+      case MapLayerType.totalField:
+        return 'Total_Field';
+      case MapLayerType.deltaT:
+        return 'Delta_T';
+      case MapLayerType.analyticSignal:
+        return 'Analytic_Signal';
+    }
+  }
+
+  Future<void> _handleExportAsciiGrid() async {
+    final grid = _currentActiveGrid;
+    if (grid == null) return;
+
+    try {
+      final dir = await widget.exportService.getDefaultExportDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final layerSlug = _currentLayerTitle().toLowerCase();
+      final fileName = 'geomag_grid_${layerSlug}_$timestamp.asc';
+      final file = await widget.exportService.exportAsciiGridToFile(
+        grid: grid,
+        filePath: '${dir.path}/$fileName',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Berhasil mengekspor ESRI ASCII Grid ke:\n${file.path}'),
+            backgroundColor: Colors.green.shade700,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal mengekspor ESRI ASCII Grid: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleExportGeoJson() async {
+    if (_stations.isEmpty) return;
+
+    try {
+      final dir = await widget.exportService.getDefaultExportDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'geomag_stations_$timestamp.geojson';
+      final file = await widget.exportService.exportGeoJsonToFile(
+        stations: _stations,
+        filePath: '${dir.path}/$fileName',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Berhasil mengekspor GeoJSON ke:\n${file.path}'),
+            backgroundColor: Colors.green.shade700,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal mengekspor GeoJSON: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleExportCsv() async {
+    if (_stations.isEmpty) return;
+
+    try {
+      final dir = await widget.exportService.getDefaultExportDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'geomag_anomalies_$timestamp.csv';
+      final file = await widget.exportService.exportCsvToFile(
+        stations: _stations,
+        filePath: '${dir.path}/$fileName',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Berhasil mengekspor CSV anomali ke:\n${file.path}'),
+            backgroundColor: Colors.green.shade700,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal mengekspor CSV: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleExportAll() async {
+    await _handleExportAsciiGrid();
+    await _handleExportGeoJson();
+    await _handleExportCsv();
   }
 }
 
