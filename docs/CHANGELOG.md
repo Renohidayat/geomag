@@ -13,6 +13,10 @@ Semua perubahan penting dicatat di sini.
 - Pembaruan tampilan beranda `HomeScreen` dengan menerapkan koreksi bias hard-iron (`calibratedTotalFieldNt` atau profil kalibrasi aktif dari database) pada meteran jarum analog dan grafik gelombang real-time sehingga di udara bebas nilai terbaca normal di zona hijau (~42.000–46.000 nT) (#47)
 
 ### Ditambahkan
+- Pemilahan cerdas daftar survei di dropdown `AnomalyMapScreen`: otomatis memprioritaskan proyek utama (`Survei Lapangan Utama`) di urutan teratas dan menampilkan badge jumlah stasiun tiap survei (#49)
+- Modal dialog bantuan ramah awam "Panduan Membaca Peta Anomali" (`Icons.help_outline` di AppBar) lengkap dengan arti gradasi warna batuan (Merah/Hijau/Biru) dan alur langkah pemakaian 1-2-3-4 (#49)
+- Banner edukasi dinamis fungsi lapisan peta (Anomali ΔT, Analytic Signal |AS| 3D, RTP, B Obs) yang otomatis berganti sesuai pilihan layer (#49)
+- Kartu informasi stasiun interaktif pada peta lengkap dengan interpretasi visual ramah pemula (Anomali Positif / Potensi Logam, Anomali Negatif / Rongga, Netral) (#49)
 - Panduan visual langkah-demi-langkah interaktif (Langkah 1: Posisi GPS -> Langkah 2: Rekam 5s -> Langkah 3: Simpan Titik) di bagian atas `StationSurveyScreen` (#49)
 - Kartu edukasi dan interpretasi nilai medan magnet ramah pemula yang menjelaskan arti angka nanotesla (nT) serta tujuan perekaman titik stasiun untuk pembentukan peta 2D (#49)
 - Tombol navigasi aksi instan pasca-simpan stasiun ("Lanjut Rekam Titik Berikutnya" dan "Buka Peta Anomali Sekarang") (#49)

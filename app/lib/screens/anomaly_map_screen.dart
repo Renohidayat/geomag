@@ -80,6 +80,7 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
 
   MapLayerType _selectedLayer = MapLayerType.deltaT;
   List<Survey> _surveys = [];
+  Map<String, int> _surveyStationCounts = {};
   String? _selectedSurveyId;
   bool _isLoading = true;
   String? _statusMessage;
@@ -110,9 +111,28 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
       final allSurveys = await widget.database.select(widget.database.surveys).get();
       final roverSurveys = allSurveys.where((s) => s.mode == 'rover').toList();
 
+      final counts = <String, int>{};
+      for (final s in roverSurveys) {
+        final stList = await (widget.database.select(widget.database.stations)
+              ..where((tbl) => tbl.surveyId.equals(s.id)))
+            .get();
+        counts[s.id] = stList.length;
+      }
+
+      // Urutkan: Survei Lapangan Utama di atas, lalu berdasarkan jumlah stasiun terbanyak
+      roverSurveys.sort((a, b) {
+        if (a.id == 'survey_default_rover') return -1;
+        if (b.id == 'survey_default_rover') return 1;
+        final countA = counts[a.id] ?? 0;
+        final countB = counts[b.id] ?? 0;
+        if (countA != countB) return countB.compareTo(countA);
+        return b.date.compareTo(a.date);
+      });
+
       if (mounted) {
         setState(() {
           _surveys = roverSurveys;
+          _surveyStationCounts = counts;
           if (roverSurveys.isNotEmpty) {
             _selectedSurveyId = roverSurveys.first.id;
           }
@@ -306,6 +326,11 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
         title: const Text('Peta Anomali Geomagnetik'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: 'Panduan Membaca Peta',
+            onPressed: () => _showMapGuideDialog(theme),
+          ),
+          IconButton(
             icon: const Icon(Icons.file_download_outlined),
             tooltip: 'Ekspor Data QGIS/GIS',
             onPressed: _showExportDialog,
@@ -383,27 +408,33 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
   }
 
   Widget _buildEmptyStateBanner(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF332A15) : Colors.amber.shade50;
+    final border = isDark ? Colors.amber.shade700 : Colors.amber.shade300;
+    final textTitle = isDark ? Colors.amber.shade200 : Colors.amber.shade900;
+    final textBody = isDark ? Colors.white70 : Colors.black87;
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.amber.shade50,
+        color: bg,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.amber.shade300),
+        border: Border.all(color: border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.info_outline, color: Colors.amber.shade900, size: 20),
+              Icon(Icons.info_outline, color: textTitle, size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Baru Ada ${_stations.length} Titik Stasiun',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Colors.amber.shade900,
+                    color: textTitle,
                     fontSize: 13,
                   ),
                 ),
@@ -411,10 +442,10 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
             ],
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Peta 2D memerlukan minimal 3 sampai 5 titik stasiun untuk membentuk peta sebaran gradasi warna batuan/logam. '
             'Ingin melihat contoh hasil petanya sekarang?',
-            style: TextStyle(fontSize: 12, color: Colors.black87, height: 1.3),
+            style: TextStyle(fontSize: 12, color: textBody, height: 1.3),
           ),
           const SizedBox(height: 8),
           SizedBox(
@@ -467,10 +498,36 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
                     isExpanded: true,
                     underline: const SizedBox.shrink(),
                     items: _surveys
-                        .map((s) => DropdownMenuItem(
-                              value: s.id,
-                              child: Text(s.name, overflow: TextOverflow.ellipsis),
-                            ))
+                        .map((s) {
+                          final count = _surveyStationCounts[s.id] ?? 0;
+                          return DropdownMenuItem(
+                            value: s.id,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(s.name, overflow: TextOverflow.ellipsis),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primaryContainer,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '$count Titik',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: theme.colorScheme.onPrimaryContainer,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        })
                         .toList(),
                     onChanged: (val) {
                       if (val != null) {
@@ -507,6 +564,227 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
             onSelectionChanged: (val) {
               setState(() => _selectedLayer = val.first);
             },
+          ),
+          const SizedBox(height: 8),
+          _buildLayerDescriptionBanner(theme),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLayerDescriptionBanner(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    String title;
+    String desc;
+    IconData icon;
+
+    switch (_selectedLayer) {
+      case MapLayerType.deltaT:
+        title = 'Lapisan Anomali Total (ΔT) • Rekomendasi Utama';
+        desc = 'Menampilkan perbedaan kemagnetan batuan/logam lokal setelah dikurangi medan bumi normal. Warna merah menandakan benda/batuan bermagnet kuat.';
+        icon = Icons.auto_awesome;
+        break;
+      case MapLayerType.analyticSignal:
+        title = 'Lapisan Analytic Signal (|AS| 3D)';
+        desc = 'Memperjelas batas tepi dan pusat anomali target di bawah tanah tanpa terpengaruh arah sudut inklinasi bumi.';
+        icon = Icons.filter_tilt_shift;
+        break;
+      case MapLayerType.rtp:
+        title = 'Lapisan Reduction to Pole (RTP)';
+        desc = 'Mengoreksi pergeseran anomali magnetik ekuator agar posisi anomali tepat tegak lurus di atas objeknya.';
+        icon = Icons.vertical_align_top;
+        break;
+      case MapLayerType.totalField:
+        title = 'Lapisan Medan Total (B Obs)';
+        desc = 'Kuat medan magnet total asli pembacaan sensor smartphone di lapangan tanpa koreksi IGRF.';
+        icon = Icons.sensors;
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isDark ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6) : Colors.white70,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: theme.colorScheme.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                Text(
+                  desc,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMapGuideDialog(ThemeData theme) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.65,
+        minChildSize: 0.4,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (ctx, scrollController) => SingleChildScrollView(
+          controller: scrollController,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade400,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Icon(Icons.map, color: theme.colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Panduan Membaca Peta Anomali',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Peta Anomali Geomagnetik menampilkan variasi nilai kemagnetan di bawah permukaan tanah dari hasil titik-titik stasiun yang Anda rekam.',
+                style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant, height: 1.4),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '1. Arti Gradasi Warna Peta (Colormap)',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: theme.colorScheme.onSurface),
+              ),
+              const SizedBox(height: 8),
+              _buildGuideColorItem(
+                color: const Color(0xFFB20000),
+                label: 'Merah / Oranye (Nilai Tinggi)',
+                desc: 'Menandakan respons kemagnetan kuat di bawah tanah. Contoh: adanya batuan beku vulkanik, urat mineral besi, pipa logam terkubur, atau struktur magnetik.',
+                theme: theme,
+              ),
+              _buildGuideColorItem(
+                color: const Color(0xFF00FF00),
+                label: 'Hijau / Kuning (Nilai Sedang / Netral)',
+                desc: 'Kondisi medan magnet rata-rata di lingkungan sekitar (tanah biasa / batuan dasar umum).',
+                theme: theme,
+              ),
+              _buildGuideColorItem(
+                color: const Color(0xFF000080),
+                label: 'Biru / Sian (Nilai Rendah / Negatif)',
+                desc: 'Kondisi kemagnetan lebih rendah dari lingkungan sekitar. Contoh: batuan sedimen berpori, pasir, rongga/gua bawah tanah, atau efek kutub kebalikan magnet.',
+                theme: theme,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '2. Alur Cara Memakai Fitur Peta Ini (Step-by-Step)',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: theme.colorScheme.onSurface),
+              ),
+              const SizedBox(height: 8),
+              _buildGuideStepItem('1', 'Pilih Survei', 'Pilih "Survei Lapangan Utama" di bagian atas untuk memuat titik stasiun rover Anda.', theme),
+              _buildGuideStepItem('2', 'Pilih Jenis Lapisan', 'Gunakan "Anomali ΔT" untuk melihat sebaran anomali batuan/logam secara optimal.', theme),
+              _buildGuideStepItem('3', 'Ketuk Titik Stasiun', 'Sentuh lingkaran titik pada peta untuk melihat koordinat X, Y dan nilai medan magnet stasiun tersebut.', theme),
+              _buildGuideStepItem('4', 'Ekspor ke QGIS / GIS', 'Tekan tombol download di pojok kanan atas untuk mengekspor data ke format peta profesional (.asc, .geojson, .csv).', theme),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Saya Mengerti'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGuideColorItem({
+    required Color color,
+    required String label,
+    required String desc,
+    required ThemeData theme,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 14,
+            height: 14,
+            margin: const EdgeInsets.only(top: 2, right: 8),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                Text(desc, style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant, height: 1.3)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGuideStepItem(String step, String title, String desc, ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 10,
+            backgroundColor: theme.colorScheme.primary,
+            child: Text(step, style: TextStyle(fontSize: 11, color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                Text(desc, style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant, height: 1.3)),
+              ],
+            ),
           ),
         ],
       ),
@@ -568,8 +846,25 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
   }
 
   Widget _buildStationInfoCard(ThemeData theme, MapStationMarker st) {
+    final isDark = theme.brightness == Brightness.dark;
+
+    String interpText;
+    Color interpColor;
+    if ((st.deltaTNt ?? 0) > 100) {
+      interpText = 'Anomali Positif (Potensi Mineral Batuan / Logam)';
+      interpColor = isDark ? Colors.orangeAccent : Colors.orange.shade800;
+    } else if ((st.deltaTNt ?? 0) < -100) {
+      interpText = 'Anomali Negatif (Lapisan Rendah / Rongga)';
+      interpColor = isDark ? Colors.lightBlueAccent : Colors.blue.shade800;
+    } else {
+      interpText = 'Netral (Kondisi Rata-Rata Lingkungan Sekitar)';
+      interpColor = isDark ? Colors.greenAccent : Colors.green.shade800;
+    }
+
     return Card(
       margin: const EdgeInsets.all(12),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -579,26 +874,39 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Stasiun #${st.sequenceNumber} (${st.stationId})',
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                Row(
+                  children: [
+                    const Icon(Icons.place, size: 18, color: Colors.amber),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Stasiun #${st.sequenceNumber} (${st.stationId})',
+                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                  ],
                 ),
                 Chip(
                   label: Text(
                     st.qualityFlag,
                     style: TextStyle(
-                      color: st.isAccepted ? Colors.green.shade800 : Colors.red.shade800,
+                      color: st.isAccepted
+                          ? (isDark ? Colors.greenAccent : Colors.green.shade900)
+                          : (isDark ? Colors.redAccent : Colors.red.shade900),
                       fontWeight: FontWeight.bold,
                       fontSize: 11,
                     ),
                   ),
                   backgroundColor: st.isAccepted
-                      ? Colors.green.withValues(alpha: 0.15)
-                      : Colors.red.withValues(alpha: 0.15),
+                      ? (isDark ? const Color(0xFF142E18) : Colors.green.shade100)
+                      : (isDark ? const Color(0xFF321414) : Colors.red.shade100),
                   padding: EdgeInsets.zero,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
               ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '• $interpText',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: interpColor),
             ),
             const Divider(height: 12),
             Row(
