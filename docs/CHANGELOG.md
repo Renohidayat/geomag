@@ -5,6 +5,10 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Modul perhitungan koreksi variasi harian (`DiurnalCorrectionService` di Dart & `reference/diurnal_correction.py` di Python) dengan interpolasi linear biner O(log N) (#20)
+- Dukungan sinkronisasi waktu epoch, deteksi gap rekaman base station, clamping batas toleransi, dan estimasi baseline B0 (#20)
+- Unit test komparasi Dart vs Python untuk interpolasi linier, rumus variasi harian, batas waktu, dan pemrosesan batch stasiun (#20)
+- Ambang `diurnal` (max_allowed_gap_s dan boundary_tolerance_s) di `config/thresholds.yaml` (#20)
 - Layar mode base station `BaseStationScreen` dengan monitoring kontinu dan visualisasi time-series kurva drift harian (`DriftCurvePainter`) (#19)
 - `BaseStationService` untuk perekaman kontinu background dengan batch buffer aman ke Drift SQLite dan kalkulasi baseline $B_0$ (#19)
 - Ekspor dataset rekaman base station ke file CSV berformat standar geomagnetik (#19)
