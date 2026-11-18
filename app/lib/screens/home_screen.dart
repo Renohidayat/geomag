@@ -6,22 +6,27 @@ import '../models/magnetometer_sample.dart';
 import '../models/sensor_info.dart';
 import '../services/magnetometer_service.dart';
 
-/// Layar utama: tampilkan data magnetometer real-time.
+/// Layar utama: menampilkan data magnetometer real-time dan metrik instrumen.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final MagnetometerService? service;
+
+  const HomeScreen({super.key, this.service});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final MagnetometerService _magnetometerService = MagnetometerService();
+  late final MagnetometerService _magnetometerService;
 
   SensorInfo? _sensorInfo;
   MagnetometerSample? _lastSample;
   StreamSubscription<MagnetometerSample>? _subscription;
   bool _isRecording = false;
   String? _errorMessage;
+  DateTime? _recordingStartTime;
+  Timer? _durationTimer;
+  Duration _recordingDuration = Duration.zero;
 
   // Statistik running
   int _displaySampleCount = 0;
@@ -31,11 +36,13 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _magnetometerService = widget.service ?? MagnetometerService();
     _loadSensorInfo();
   }
 
   @override
   void dispose() {
+    _durationTimer?.cancel();
     _subscription?.cancel();
     super.dispose();
   }
@@ -43,9 +50,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadSensorInfo() async {
     try {
       final info = await _magnetometerService.getSensorInfo();
-      setState(() => _sensorInfo = info);
+      if (mounted) setState(() => _sensorInfo = info);
     } catch (e) {
-      setState(() => _errorMessage = 'Gagal membaca info sensor: $e');
+      if (mounted) setState(() => _errorMessage = 'Gagal membaca info sensor: $e');
     }
   }
 
@@ -54,6 +61,17 @@ class _HomeScreenState extends State<HomeScreen> {
     _displaySampleCount = 0;
     _sumTotalFieldMicroT = 0.0;
     _sumTotalFieldSqMicroT = 0.0;
+    _recordingStartTime = DateTime.now();
+    _recordingDuration = Duration.zero;
+
+    _durationTimer?.cancel();
+    _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_recordingStartTime != null && mounted) {
+        setState(() {
+          _recordingDuration = DateTime.now().difference(_recordingStartTime!);
+        });
+      }
+    });
 
     _subscription = _magnetometerService.sampleStream.listen(
       (sample) {
@@ -69,6 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _errorMessage = 'Error sensor: $error';
           _isRecording = false;
         });
+        _durationTimer?.cancel();
       },
     );
 
@@ -79,6 +98,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _stopRecording() {
+    _durationTimer?.cancel();
+    _durationTimer = null;
     _subscription?.cancel();
     _subscription = null;
     setState(() => _isRecording = false);
@@ -93,13 +114,16 @@ class _HomeScreenState extends State<HomeScreen> {
     return variance > 0 ? variance.clamp(0, double.infinity) : 0.0;
   }
 
+  /// Simpangan baku total field dalam nanoTesla.
+  double get _stdDevNt => _stdDevMicroT * 1000.0;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('GeoMag'),
+        title: const Text('GeoMag - Survei Magnetik'),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
@@ -131,11 +155,22 @@ class _HomeScreenState extends State<HomeScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 48),
                 child: Center(
-                  child: Text(
-                    'Tekan tombol di bawah untuk mulai merekam',
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.sensors,
+                        size: 64,
+                        color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Tekan tombol di bawah untuk mulai streaming sensor',
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -145,7 +180,11 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isRecording ? _stopRecording : _startRecording,
         icon: Icon(_isRecording ? Icons.stop : Icons.play_arrow),
-        label: Text(_isRecording ? 'Berhenti' : 'Mulai Rekam'),
+        label: Text(
+          _isRecording
+              ? 'Berhenti (${_formatDuration(_recordingDuration)})'
+              : 'Mulai Rekam',
+        ),
         backgroundColor: _isRecording
             ? theme.colorScheme.error
             : theme.colorScheme.primary,
@@ -164,19 +203,32 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Info Sensor', style: theme.textTheme.titleSmall),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Info Sensor', style: theme.textTheme.titleSmall),
+                if (info != null && info.available)
+                  Chip(
+                    label: Text(
+                      info.isUncalibrated ? 'Uncalibrated' : 'Calibrated OS',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    backgroundColor: info.isUncalibrated
+                        ? Colors.green.withValues(alpha: 0.2)
+                        : Colors.orange.withValues(alpha: 0.2),
+                    padding: EdgeInsets.zero,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+              ],
+            ),
             const Divider(),
             if (info == null)
               const Text('Memuat...')
             else if (!info.available)
-              const Text('Magnetometer tidak tersedia')
+              const Text('Magnetometer tidak tersedia pada perangkat ini')
             else ...[
               _infoRow('Nama', info.name ?? '-'),
               _infoRow('Vendor', info.vendor ?? '-'),
-              _infoRow(
-                'Tipe',
-                info.isUncalibrated ? 'Uncalibrated ✓' : 'Calibrated ⚠',
-              ),
               _infoRow(
                 'Resolusi',
                 info.resolutionMicroT != null
@@ -184,7 +236,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     : '-',
               ),
               _infoRow(
-                'Laju maks',
+                'Laju maks hardware',
                 info.maxRateHz != null
                     ? '${info.maxRateHz!.toStringAsFixed(0)} Hz'
                     : '-',
@@ -204,21 +256,32 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Data Magnetometer', style: theme.textTheme.titleSmall),
+            Text('Data Medan Magnetik (Real-time)',
+                style: theme.textTheme.titleSmall),
             const Divider(),
-            _infoRow('Bx', '${s.rawXMicroT.toStringAsFixed(2)} µT'),
-            _infoRow('By', '${s.rawYMicroT.toStringAsFixed(2)} µT'),
-            _infoRow('Bz', '${s.rawZMicroT.toStringAsFixed(2)} µT'),
+            _infoRow('Bx (komponen X)', '${s.rawXMicroT.toStringAsFixed(2)} µT'),
+            _infoRow('By (komponen Y)', '${s.rawYMicroT.toStringAsFixed(2)} µT'),
+            _infoRow('Bz (komponen Z)', '${s.rawZMicroT.toStringAsFixed(2)} µT'),
             const Divider(),
-            _infoRow(
-              'Total Field',
-              '${s.totalFieldMicroT.toStringAsFixed(2)} µT  '
-                  '(${s.totalFieldNt.toStringAsFixed(0)} nT)',
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Total Field (F)',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  '${s.totalFieldNt.toStringAsFixed(0)} nT  '
+                  '(${s.totalFieldMicroT.toStringAsFixed(2)} µT)',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ],
             ),
-            _infoRow(
-              'Akurasi',
-              _accuracyLabel(s.accuracy),
-            ),
+            const SizedBox(height: 4),
+            _infoRow('Akurasi OS', _accuracyLabel(s.accuracy)),
           ],
         ),
       ),
@@ -233,7 +296,8 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Statistik Sampling', style: theme.textTheme.titleSmall),
+            Text('Statistik Sampling & Stabilitas',
+                style: theme.textTheme.titleSmall),
             const Divider(),
             _infoRow('Jumlah sampel', '$_displaySampleCount'),
             _infoRow(
@@ -241,19 +305,42 @@ class _HomeScreenState extends State<HomeScreen> {
               '${service.actualRateHz.toStringAsFixed(1)} Hz',
             ),
             _infoRow(
-              'Jitter',
+              'Jitter antar-sampel',
               '${service.jitterMs.toStringAsFixed(2)} ms',
             ),
             _infoRow(
               'Interval rata-rata',
               '${service.avgIntervalMs.toStringAsFixed(2)} ms',
             ),
-            if (_displaySampleCount >= 2)
+            if (_displaySampleCount >= 2) ...[
+              const Divider(),
               _infoRow(
-                'σ total field',
-                '${(_stdDevMicroT * 1000).toStringAsFixed(1)} nT '
-                    '(n=$_displaySampleCount)',
+                'Simpangan baku σ',
+                '${_stdDevNt.toStringAsFixed(1)} nT (n=$_displaySampleCount)',
               ),
+              const SizedBox(height: 6),
+              // Bar kestabilan visual
+              LinearProgressIndicator(
+                value: (_stdDevNt / 1000.0).clamp(0.0, 1.0),
+                backgroundColor: Colors.green.withValues(alpha: 0.2),
+                color: _stdDevNt < 300
+                    ? Colors.green
+                    : (_stdDevNt < 800 ? Colors.orange : Colors.red),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _stdDevNt < 300
+                    ? 'Sinyal tenang (σ < 300 nT)'
+                    : (_stdDevNt < 800
+                        ? 'Noise sedang (300–800 nT)'
+                        : 'Noise tinggi / ada gangguan (> 800 nT)'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: _stdDevNt < 300
+                      ? Colors.green
+                      : (_stdDevNt < 800 ? Colors.orange : Colors.red),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -268,7 +355,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Status Perangkat', style: theme.textTheme.titleSmall),
+            Text('Status Kondisi Perangkat', style: theme.textTheme.titleSmall),
             const Divider(),
             _infoRow(
               'Suhu baterai',
@@ -276,8 +363,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   ? '${s.batteryTempC.toStringAsFixed(1)} °C'
                   : 'Tidak tersedia',
             ),
-            _infoRow('Mengisi daya', s.isCharging ? 'Ya ⚠' : 'Tidak ✓'),
-            _infoRow('Layar', s.isScreenOn ? 'Menyala' : 'Mati'),
+            _infoRow(
+              'Status pengisian daya',
+              s.isCharging
+                  ? 'Mengisi daya (PERINGATAN: arus charging merusak medan!)'
+                  : 'Baterai (Aman ✓)',
+            ),
+            _infoRow('Status layar', s.isScreenOn ? 'Menyala' : 'Mati'),
           ],
         ),
       ),
@@ -308,5 +400,11 @@ class _HomeScreenState extends State<HomeScreen> {
       default:
         return 'Tidak andal (0)';
     }
+  }
+
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
   }
 }
