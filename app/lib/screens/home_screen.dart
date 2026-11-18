@@ -13,6 +13,7 @@ import 'base_station_screen.dart';
 import 'calibration_screen.dart';
 import 'noise_test_screen.dart';
 import 'station_survey_screen.dart';
+import 'survey_quality_report_screen.dart';
 
 /// Layar utama: menampilkan data magnetometer real-time dan metrik instrumen.
 class HomeScreen extends StatefulWidget {
@@ -242,6 +243,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => AnomalyMapScreen(
+                    database: _database,
+                  ),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.fact_check_outlined),
+            tooltip: 'Laporan Mutu Survei',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SurveyQualityReportScreen(
                     database: _database,
                   ),
                 ),
