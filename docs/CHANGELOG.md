@@ -5,6 +5,11 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Layanan audit mutu survei otomatis `SurveyQualityReportService` yang mengevaluasi rasio stasiun, simpangan baku agregat, audit kalibrasi ellipsoid, ketercukupan base station harian, skor mutu 0–100, dan predikat mutu Grade A/B/C/D (#36)
+- Layar antarmuka laporan mutu survei `SurveyQualityReportScreen` dengan kartu skor KPI dinamis, visualisasi kinerja stasiun, temuan teknis otomatis, dan rekomendasi tindakan lapangan (#36)
+- Fitur ekspor laporan audit mutu ke format teks Markdown resmi dan salin ke clipboard (#36)
+- Integrasi tombol navigasi laporan mutu survei (`Icons.fact_check_outlined`) pada AppBar `HomeScreen` (#36)
+- Unit test evaluasi scoring mutu dan widget test tampilan laporan survei (#36)
 - Laporan pengujian dan verifikasi Fase 3 (Pengolahan, Gridding, Peta Anomali, dan Ekspor QGIS) di `docs/laporan_uji_fase_3.md`
 - Modul ekspor data geospasial GIS (`QgisExportService` di Dart & `reference/qgis_export.py` di Python) untuk integrasi dengan software GIS profesional (QGIS, ArcGIS, Oasis Montaj) (#30)
 - Ekspor raster grid 2D ke format ESRI ASCII Grid (.asc) lengkap dengan header NCOLS, NROWS, XLLCORNER, YLLCORNER, CELLSIZE, NODATA_VALUE, dan urutan baris utara-ke-selatan (#30)
