@@ -5,6 +5,7 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Laporan pengujian dan verifikasi Fase 3 (Pengolahan, Gridding, Peta Anomali, dan Ekspor QGIS) di `docs/laporan_uji_fase_3.md`
 - Modul ekspor data geospasial GIS (`QgisExportService` di Dart & `reference/qgis_export.py` di Python) untuk integrasi dengan software GIS profesional (QGIS, ArcGIS, Oasis Montaj) (#30)
 - Ekspor raster grid 2D ke format ESRI ASCII Grid (.asc) lengkap dengan header NCOLS, NROWS, XLLCORNER, YLLCORNER, CELLSIZE, NODATA_VALUE, dan urutan baris utara-ke-selatan (#30)
 - Ekspor layer vektor titik stasiun ke format GeoJSON FeatureCollection WGS-84 dengan koordinat lon/lat dan atribut komprehensif (#30)
