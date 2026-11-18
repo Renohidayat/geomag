@@ -4,6 +4,10 @@ Semua perubahan penting dicatat di sini.
 
 ## [Belum dirilis]
 
+### Diperbaiki
+- Koreksi algoritma pelacak orientasi bola `SphereCoverageTracker` dan layar `CalibrationScreen` dengan auto-centering estimasi bias hard-iron OS / running mean, mencegah titik orientasi terperangkap dalam kerucut sempit akibat medan magnet speaker internal smartphone (#47)
+- Pembaruan tampilan beranda `HomeScreen` dengan menerapkan koreksi bias hard-iron (`calibratedTotalFieldNt` atau profil kalibrasi aktif dari database) pada meteran jarum analog dan grafik gelombang real-time sehingga di udara bebas nilai terbaca normal di zona hijau (~42.000–46.000 nT) (#47)
+
 ### Ditambahkan
 - Desain antarmuka baru yang ramah pengguna (user-friendly) untuk pemula dan praktisi lapangan tanpa mengurangi akurasi ilmiah (#45)
 - Widget meteran jarum analog (`AnalogGaugeWidget`) dinamis ala Ultimate EMF Detector dengan busur warna 240 derajat (Zona Normal Medan Bumi, Anomali Sedang, hingga Anomali Kuat Batuan/Logam), status badge responsif, dan indikator jarum halus (#45)

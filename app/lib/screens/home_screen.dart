@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import '../database/app_database.dart';
 import '../models/magnetometer_sample.dart';
 import '../models/sensor_info.dart';
+import '../services/ellipsoid_calibration_service.dart';
 import '../services/magnetometer_service.dart';
 import '../services/recording_session_service.dart';
 import '../widgets/analog_gauge_widget.dart';
@@ -36,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   SensorInfo? _sensorInfo;
   MagnetometerSample? _lastSample;
+  EllipsoidCalibrationResult? _activeCalibration;
   StreamSubscription<MagnetometerSample>? _subscription;
   bool _isRecording = false;
   String? _errorMessage;
@@ -59,6 +61,43 @@ class _HomeScreenState extends State<HomeScreen> {
     _database = widget.database ?? AppDatabase();
     _recordingSessionService = RecordingSessionService(database: _database);
     _loadSensorInfo();
+    _loadActiveCalibration();
+  }
+
+  Future<void> _loadActiveCalibration() async {
+    try {
+      final profile = await _database.getLatestCalibrationProfile('default-device');
+      if (profile != null && mounted) {
+        final elements = profile.matrixA.split(',').map((s) => double.parse(s.trim())).toList();
+        setState(() {
+          _activeCalibration = EllipsoidCalibrationResult(
+            offsetMicroT: [
+              profile.hardIronBxMicroT,
+              profile.hardIronByMicroT,
+              profile.hardIronBzMicroT,
+            ],
+            matrixA: elements,
+            residualNt: profile.residualNt,
+            stdBeforeNt: 0.0,
+            stdAfterNt: 0.0,
+            inlierCount: 0,
+          );
+        });
+      }
+    } catch (_) {
+      // Abaikan jika belum ada profil kalibrasi
+    }
+  }
+
+  double _calculateCalibratedNt(MagnetometerSample sample) {
+    if (_activeCalibration != null) {
+      return _activeCalibration!.calibratedTotalFieldNt(
+        sample.rawXMicroT,
+        sample.rawYMicroT,
+        sample.rawZMicroT,
+      );
+    }
+    return sample.calibratedTotalFieldNt;
   }
 
   @override
@@ -106,12 +145,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _subscription = _magnetometerService.sampleStream.listen(
       (sample) {
         _displaySampleCount++;
-        final tf = sample.totalFieldMicroT;
-        _sumTotalFieldMicroT += tf;
-        _sumTotalFieldSqMicroT += tf * tf;
+        final currentNt = _calculateCalibratedNt(sample);
+        final currentMicroT = currentNt / 1000.0;
+        _sumTotalFieldMicroT += currentMicroT;
+        _sumTotalFieldSqMicroT += currentMicroT * currentMicroT;
 
-        final totalNt = tf * 1000.0;
-        _waveformHistory.add(totalNt);
+        _waveformHistory.add(currentNt);
         if (_waveformHistory.length > 80) {
           _waveformHistory.removeAt(0);
         }
@@ -194,7 +233,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final currentFieldNt = _lastSample != null ? _lastSample!.totalFieldNt : 45000.0;
+    final currentFieldNt = _lastSample != null ? _calculateCalibratedNt(_lastSample!) : 45000.0;
 
     return Scaffold(
       appBar: AppBar(
@@ -227,7 +266,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     database: _database,
                   ),
                 ),
-              );
+              ).then((_) => _loadActiveCalibration());
             },
           ),
           IconButton(
@@ -440,7 +479,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   database: _database,
                 ),
               ),
-            );
+            ).then((_) => _loadActiveCalibration());
           },
         ),
         const SizedBox(height: 8),
@@ -618,29 +657,57 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildMagDataCard(ThemeData theme) {
     final s = _lastSample!;
+    final currentNt = _calculateCalibratedNt(s);
+    final currentMicroT = currentNt / 1000.0;
+    final isCalibrated = _activeCalibration != null || s.biasXMicroT != 0.0;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Data Medan Magnetik (Real-time)',
-                style: theme.textTheme.titleSmall),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Data Medan Magnetik (Real-time)',
+                    style: theme.textTheme.titleSmall),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: isCalibrated
+                        ? Colors.green.withValues(alpha: 0.15)
+                        : Colors.orange.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    _activeCalibration != null
+                        ? 'Ellipsoid Aktif ✓'
+                        : (s.biasXMicroT != 0.0 ? 'Auto-Bias Aktif ✓' : 'Medan Mentah'),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: isCalibrated ? Colors.green : Colors.orange,
+                    ),
+                  ),
+                ),
+              ],
+            ),
             const Divider(),
-            _infoRow('Bx (komponen X)', '${s.rawXMicroT.toStringAsFixed(2)} µT'),
-            _infoRow('By (komponen Y)', '${s.rawYMicroT.toStringAsFixed(2)} µT'),
-            _infoRow('Bz (komponen Z)', '${s.rawZMicroT.toStringAsFixed(2)} µT'),
+            _infoRow('Bx (komponen X)', '${s.calibratedXMicroT.toStringAsFixed(2)} µT'),
+            _infoRow('By (komponen Y)', '${s.calibratedYMicroT.toStringAsFixed(2)} µT'),
+            _infoRow('Bz (komponen Z)', '${s.calibratedZMicroT.toStringAsFixed(2)} µT'),
             const Divider(),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
-                  'Total Field (F)',
+                  'Medan Total (F)',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  '${s.totalFieldNt.toStringAsFixed(0)} nT  '
-                  '(${s.totalFieldMicroT.toStringAsFixed(2)} µT)',
+                  '${currentNt.toStringAsFixed(0)} nT  '
+                  '(${currentMicroT.toStringAsFixed(2)} µT)',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: theme.colorScheme.primary,

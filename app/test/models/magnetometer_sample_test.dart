@@ -147,5 +147,28 @@ void main() {
       expect(map['accuracy'], 1);
       expect(map['isUncalibrated'], true);
     });
+
+    test('calibratedTotalFieldNt mengurangkan bias hard iron OS Android', () {
+      final sample = MagnetometerSample(
+        timestampNs: 1000,
+        rawXMicroT: 53.0, // 53 - 50 = 3
+        rawYMicroT: 84.0, // 84 - 80 = 4
+        rawZMicroT: 20.0, // 20 - 20 = 0
+        biasXMicroT: 50.0,
+        biasYMicroT: 80.0,
+        biasZMicroT: 20.0,
+        accuracy: 3,
+        isUncalibrated: true,
+        batteryTempC: 30.0,
+        isCharging: false,
+        isScreenOn: true,
+      );
+
+      expect(sample.calibratedXMicroT, closeTo(3.0, 1e-10));
+      expect(sample.calibratedYMicroT, closeTo(4.0, 1e-10));
+      expect(sample.calibratedZMicroT, closeTo(0.0, 1e-10));
+      expect(sample.calibratedTotalFieldMicroT, closeTo(5.0, 1e-10));
+      expect(sample.calibratedTotalFieldNt, closeTo(5000.0, 1e-10));
+    });
   });
 }
