@@ -146,4 +146,27 @@ void main() {
     expect(find.byType(InteractiveViewer), findsOneWidget);
     expect(find.byType(CustomPaint), findsWidgets);
   });
+
+  testWidgets(
+      'AnomalyMapScreen membuka dialog ekspor QGIS saat tombol download ditekan',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AnomalyMapScreen(database: db),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // Tekan tombol ekspor GIS
+    await tester.tap(find.byIcon(Icons.file_download_outlined));
+    await tester.pumpAndSettle();
+
+    // Dialog bottom sheet ekspor harus muncul
+    expect(find.text('Ekspor Data QGIS / GIS'), findsOneWidget);
+    expect(find.text('ESRI ASCII Grid (.asc)'), findsOneWidget);
+    expect(find.text('GeoJSON Titik Stasiun (.geojson)'), findsOneWidget);
+    expect(find.text('CSV Anomali Terpadu (.csv)'), findsOneWidget);
+    expect(find.text('Ekspor Semua Paket GIS (Lengkap)'), findsOneWidget);
+  });
 }

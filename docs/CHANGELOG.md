@@ -5,6 +5,12 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Modul ekspor data geospasial GIS (`QgisExportService` di Dart & `reference/qgis_export.py` di Python) untuk integrasi dengan software GIS profesional (QGIS, ArcGIS, Oasis Montaj) (#30)
+- Ekspor raster grid 2D ke format ESRI ASCII Grid (.asc) lengkap dengan header NCOLS, NROWS, XLLCORNER, YLLCORNER, CELLSIZE, NODATA_VALUE, dan urutan baris utara-ke-selatan (#30)
+- Ekspor layer vektor titik stasiun ke format GeoJSON FeatureCollection WGS-84 dengan koordinat lon/lat dan atribut komprehensif (#30)
+- Ekspor tabel gabungan stasiun, koreksi harian, IGRF, dan anomali ke format CSV standar geomagnetik (#30)
+- Dialog antarmuka ekspor data GIS pada `AnomalyMapScreen` dengan opsi ekspor individual dan paket lengkap (#30)
+- Unit test Dart dan Python untuk verifikasi struktur file ESRI ASCII Grid, GeoJSON WGS-84, dan CSV (#30)
 - Layar peta anomali 2D interaktif `AnomalyMapScreen` dengan rendering kanvas `InteractiveViewer` dan `GridMapPainter` (#29)
 - Visualisasi colormap geofisika kontinum 6 titik kontrol (Deep Blue -> Cyan -> Green -> Yellow -> Orange -> Deep Red) (#29)
 - Colorbar legenda dinamis dengan skala nilai min/max dan satuan nT atau nT/m (#29)
