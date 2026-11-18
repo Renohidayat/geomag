@@ -5,6 +5,7 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Laporan pengujian dan verifikasi Fase 4 (Validasi, Hardening, GNSS Eksternal, dan Laporan Mutu) di `docs/laporan_uji_fase_4.md`
 - Modul analisis komparasi keterulangan dan konsistensi multi-smartphone / multi-sesi (`RepeatabilityAnalysisService` di Dart & `reference/repeatability.py` di Python) (#39)
 - Perhitungan komprehensif metrik keterulangan profil survei: bias rata-rata, beda absolut rata-rata (MAD), RMSE, koefisien korelasi Pearson ($r$), batas toleransi $2 \times \text{lantai noise}$, dan rasio titik lolos (#39)
 - Panduan operasional dan template lembar kerja resmi pengujian lapangan UAT di `docs/UAT_FIELD_VALIDATION.md` yang mencakup 6 protokol pengujian (#39)
