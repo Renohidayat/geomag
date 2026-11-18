@@ -34,3 +34,9 @@ diurnal:
   # Toleransi waktu di luar batas rekaman base station (detik)
   boundary_tolerance_s: 30.0
 
+repeatability:
+  # Pengali lantai noise untuk batas toleransi keterulangan (PRD: 2x lantai noise)
+  tolerance_multiplier: 2.0
+  # Korelasi Pearson minimum yang dianggap konsisten
+  min_acceptable_correlation: 0.85
+

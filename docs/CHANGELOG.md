@@ -5,6 +5,10 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Modul analisis komparasi keterulangan dan konsistensi multi-smartphone / multi-sesi (`RepeatabilityAnalysisService` di Dart & `reference/repeatability.py` di Python) (#39)
+- Perhitungan komprehensif metrik keterulangan profil survei: bias rata-rata, beda absolut rata-rata (MAD), RMSE, koefisien korelasi Pearson ($r$), batas toleransi $2 \times \text{lantai noise}$, dan rasio titik lolos (#39)
+- Panduan operasional dan template lembar kerja resmi pengujian lapangan UAT di `docs/UAT_FIELD_VALIDATION.md` yang mencakup 6 protokol pengujian (#39)
+- Unit test komparasi Dart vs Python untuk verifikasi paritas numerik evaluasi keterulangan survei (#39)
 - Modul Reduction to Pole (RTP) teratur untuk lintang magnetik rendah Indonesia (`RtpService` di Dart & `reference/rtp_low_latitude.py` di Python) dengan regularisasi phase-preserving pseudo-inclination (#38)
 - Pencegahan singularitas operator RTP pada ekuator magnetik ($|I| < 20^\circ$) dengan pembatasan amplitudo $\delta = \sin^2(I_p)$ tanpa distorsi fase kutub (#38)
 - Integrasi opsi layer tampilan `RTP` pada `AnomalyMapScreen` dan ekspor grid RTP ke format ESRI ASCII Grid (.asc) (#38)
