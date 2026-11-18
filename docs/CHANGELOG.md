@@ -5,12 +5,17 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Diperbaiki
+- Perbaikan kontras warna teks dan adaptasi tema gelap (Dark Mode) pada kartu hasil pengukuran di `StationSurveyScreen`, menghilangkan tabrakan teks putih di atas latar terang (#49)
+- Perbaikan layout RenderFlex overflow 22 pixels pada tombol durasi survei dengan `Wrap` responsif (#49)
 - Perbaikan layout RenderFlex overflow 11 pixels pada pemilih sumber posisi di `StationSurveyScreen` dengan tata letak vertikal penuh (#49)
 - Penyesuaian agregasi sampel stasiun pada `StationAggregationService` agar menggunakan data terkoreksi bias hard-iron aktif (`calibratedTotalFieldNt`) saat profil kalibrasi tersimpan belum dipilih (#49)
 - Koreksi algoritma pelacak orientasi bola `SphereCoverageTracker` dan layar `CalibrationScreen` dengan auto-centering estimasi bias hard-iron OS / running mean, mencegah titik orientasi terperangkap dalam kerucut sempit akibat medan magnet speaker internal smartphone (#47)
 - Pembaruan tampilan beranda `HomeScreen` dengan menerapkan koreksi bias hard-iron (`calibratedTotalFieldNt` atau profil kalibrasi aktif dari database) pada meteran jarum analog dan grafik gelombang real-time sehingga di udara bebas nilai terbaca normal di zona hijau (~42.000–46.000 nT) (#47)
 
 ### Ditambahkan
+- Panduan visual langkah-demi-langkah interaktif (Langkah 1: Posisi GPS -> Langkah 2: Rekam 5s -> Langkah 3: Simpan Titik) di bagian atas `StationSurveyScreen` (#49)
+- Kartu edukasi dan interpretasi nilai medan magnet ramah pemula yang menjelaskan arti angka nanotesla (nT) serta tujuan perekaman titik stasiun untuk pembentukan peta 2D (#49)
+- Tombol navigasi aksi instan pasca-simpan stasiun ("Lanjut Rekam Titik Berikutnya" dan "Buka Peta Anomali Sekarang") (#49)
 - Pilihan durasi perekaman cepat stasiun (5 detik, 10 detik, 30 detik) dengan default 5 detik di `StationSurveyScreen` agar survei lapangan tidak membuat tangan pegal dan meminimalkan goyangan HP (#49)
 - Redesain antarmuka hasil rekam stasiun ramah pemula: instruksi jelas "Tahan HP Diam", status santai "HP Tadi Agak Bergoyang" saat goyang, tombol hijau besar "Simpan Titik Stasiun", serta rincian teknis geofisika disembunyikan di menu lipat (#49)
 - Banner panduan pemula pada layar `AnomalyMapScreen` saat data stasiun masih sedikit (< 3 titik) lengkap dengan tombol instan "Tampilkan Peta Contoh Demo Simulasi" (#49)

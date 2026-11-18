@@ -78,7 +78,9 @@ void main() {
     expect(find.text('Mulai Rekam Titik Stasiun (2 Detik)'), findsOneWidget);
 
     // Mulai rekam stasiun
-    await tester.tap(find.text('Mulai Rekam Titik Stasiun (2 Detik)'));
+    final recordBtn = find.text('Mulai Rekam Titik Stasiun (2 Detik)');
+    await tester.ensureVisible(recordBtn);
+    await tester.tap(recordBtn);
     await tester.pump();
 
     // Pancarkan 15 sampel stabil (+- 50 nT)
@@ -143,7 +145,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // Mulai rekam stasiun
-    await tester.tap(find.text('Mulai Rekam Titik Stasiun (2 Detik)'));
+    final recordBtn = find.text('Mulai Rekam Titik Stasiun (2 Detik)');
+    await tester.ensureVisible(recordBtn);
+    await tester.tap(recordBtn);
     await tester.pump();
 
     // Pancarkan 15 sampel dengan variansi besar (+- 1000 nT)

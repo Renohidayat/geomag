@@ -9,6 +9,7 @@ import '../services/ellipsoid_calibration_service.dart';
 import '../services/magnetometer_service.dart';
 import '../services/nmea_parser_service.dart';
 import '../services/station_aggregation_service.dart';
+import 'anomaly_map_screen.dart';
 
 /// Layar survei stasiun rover: perekaman diam, evaluasi mutu statistik, dan penyimpanan ke database.
 class StationSurveyScreen extends StatefulWidget {
@@ -401,6 +402,11 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
   @override
   Widget build(BuildContext context) {
     final res = _aggregationResult;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final textPrimary = isDark ? Colors.white : Colors.black87;
+    final textSecondary = isDark ? Colors.white70 : Colors.black54;
 
     return Scaffold(
       appBar: AppBar(
@@ -412,9 +418,13 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Card Info Survei & Stasiun
+            // Panduan Alur Langkah demi Langkah (Step-by-Step Flow)
+            _buildStepIndicator(theme),
+
+            // Card 1: Info Titik & Koordinat (Langkah 1)
             Card(
               elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -423,12 +433,33 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          _activeSurveyName,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primaryContainer,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                '1',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _activeSurveyName,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: textPrimary,
+                              ),
+                            ),
+                          ],
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -436,23 +467,23 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.blue.shade100,
+                            color: isDark ? Colors.blue.shade900 : Colors.blue.shade100,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
                             'Stasiun #$_nextStationSequence',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: Colors.blue.shade900,
+                              color: isDark ? Colors.blue.shade100 : Colors.blue.shade900,
                             ),
                           ),
                         ),
                       ],
                     ),
                     const Divider(height: 20),
-                    const Text(
-                      'Sumber Posisi:',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    Text(
+                      'Sumber Posisi (GPS):',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textPrimary),
                     ),
                     const SizedBox(height: 6),
                     SizedBox(
@@ -482,8 +513,8 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: _externalGnssPosition != null
-                              ? Colors.green.withValues(alpha: 0.1)
-                              : Colors.orange.withValues(alpha: 0.1),
+                              ? Colors.green.withValues(alpha: 0.15)
+                              : Colors.orange.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
                             color: _externalGnssPosition != null
@@ -499,8 +530,8 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                                   : Icons.gps_not_fixed,
                               size: 20,
                               color: _externalGnssPosition != null
-                                  ? Colors.green.shade700
-                                  : Colors.orange.shade700,
+                                  ? (isDark ? Colors.greenAccent : Colors.green.shade700)
+                                  : (isDark ? Colors.orangeAccent : Colors.orange.shade700),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
@@ -511,12 +542,12 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                                     _externalGnssPosition != null
                                         ? 'Fix: ${_externalGnssPosition!.fixQuality.label} (Sat: ${_externalGnssPosition!.satellites ?? "-"}, HDOP: ${_externalGnssPosition!.hdop ?? "-"})'
                                         : 'Belum ada kalimat NMEA terhubung',
-                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: textPrimary),
                                   ),
                                   if (_externalGnssPosition != null)
                                     Text(
                                       'Alt: ${_externalGnssPosition!.altitudeM?.toStringAsFixed(1) ?? "-"}m • Tipe: ${_externalGnssPosition!.sentenceType}',
-                                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                      style: TextStyle(fontSize: 10, color: textSecondary),
                                     ),
                                 ],
                               ),
@@ -531,9 +562,9 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                       ),
                     ],
                     const SizedBox(height: 12),
-                    const Text(
+                    Text(
                       'Koordinat Lokasi Stasiun:',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textPrimary),
                     ),
                     const SizedBox(height: 8),
                     Row(
@@ -582,7 +613,7 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Card Perekaman Diam Real-Time
+            // Card 2: Perekaman Diam Real-Time (Langkah 2)
             Card(
               elevation: 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -593,20 +624,42 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primaryContainer,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            '2',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         Icon(
                           _isRecording ? Icons.hourglass_top_rounded : Icons.pan_tool_alt_outlined,
-                          color: _isRecording ? Colors.indigo : Colors.teal.shade700,
+                          color: _isRecording
+                              ? (isDark ? Colors.amberAccent : Colors.indigo)
+                              : (isDark ? Colors.tealAccent : Colors.teal.shade700),
                           size: 22,
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          _isRecording
-                              ? 'Merekam... Tahan HP Diam! ($_remainingSeconds s)'
-                              : 'Pegang HP Diam & Tenang di Titik Ini',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: _isRecording ? Colors.indigo : Colors.black87,
+                        Flexible(
+                          child: Text(
+                            _isRecording
+                                ? 'Merekam... Tahan HP Diam! ($_remainingSeconds s)'
+                                : 'Pegang HP Diam & Tenang di Titik Ini',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: _isRecording
+                                  ? (isDark ? Colors.amberAccent : Colors.indigo)
+                                  : textPrimary,
+                            ),
                           ),
                         ),
                       ],
@@ -618,17 +671,24 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                             _selectedDurationSeconds,
                         minHeight: 10,
                         borderRadius: BorderRadius.circular(5),
-                        backgroundColor: Colors.grey.shade200,
-                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.indigo),
+                        backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          isDark ? Colors.tealAccent : Colors.indigo,
+                        ),
                       ),
                       const SizedBox(height: 12),
                     ] else ...[
-                      // Pilihan Durasi Pengukuran
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      // Pilihan Durasi Pengukuran (Pakai Wrap agar tidak overflow di layar kecil)
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          const Text('Waktu Uji:', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                          const SizedBox(width: 8),
+                          Text(
+                            'Waktu Uji:',
+                            style: TextStyle(fontSize: 12, color: textSecondary, fontWeight: FontWeight.w500),
+                          ),
                           ChoiceChip(
                             label: const Text('5 Detik (Cepat)', style: TextStyle(fontSize: 11)),
                             selected: _selectedDurationSeconds == 5,
@@ -636,7 +696,6 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                               if (sel) setState(() => _selectedDurationSeconds = 5);
                             },
                           ),
-                          const SizedBox(width: 6),
                           ChoiceChip(
                             label: const Text('10 Detik', style: TextStyle(fontSize: 11)),
                             selected: _selectedDurationSeconds == 10,
@@ -644,7 +703,6 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                               if (sel) setState(() => _selectedDurationSeconds = 10);
                             },
                           ),
-                          const SizedBox(width: 6),
                           ChoiceChip(
                             label: const Text('30 Detik', style: TextStyle(fontSize: 11)),
                             selected: _selectedDurationSeconds == 30,
@@ -663,11 +721,13 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                           'Sampel Terkumpul',
                           '${_stationSamples.length}',
                           Icons.data_usage,
+                          theme,
                         ),
                         _buildStatBox(
                           'Target Waktu',
                           '${_selectedDurationSeconds}s',
                           Icons.timer_outlined,
+                          theme,
                         ),
                       ],
                     ),
@@ -688,131 +748,41 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
               ),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: _isRecording ? Colors.grey : Colors.indigo,
-                foregroundColor: Colors.white,
+                backgroundColor: _isRecording
+                    ? (isDark ? Colors.grey.shade800 : Colors.grey)
+                    : theme.colorScheme.primary,
+                foregroundColor: theme.colorScheme.onPrimary,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
               onPressed: _isRecording ? null : _startStationRecording,
             ),
             const SizedBox(height: 16),
 
-            // Banner Hasil Evaluasi Mutu
+            // Banner Hasil Evaluasi Mutu (Langkah 3)
             if (res != null) ...[
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: res.isAccepted ? Colors.green.shade50 : Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: res.isAccepted ? Colors.green.shade400 : Colors.red.shade300,
-                    width: 1.5,
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          res.isAccepted ? Icons.check_circle : Icons.warning_amber_rounded,
-                          color: res.isAccepted ? Colors.green.shade700 : Colors.red.shade700,
-                          size: 26,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            res.isAccepted
-                                ? '✓ Titik Stasiun Berhasil Direkam!'
-                                : '⚠️ HP Tadi Agak Bergoyang',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                              color: res.isAccepted ? Colors.green.shade900 : Colors.red.shade900,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      res.isAccepted
-                          ? 'Posisi HP tenang dan hasil pengukuran medan magnetik stabil.'
-                          : 'Sensor mendeteksi HP bergerak saat merekam. Mohon tahan HP tetap diam dan tenang selama $_selectedDurationSeconds detik ya.',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: res.isAccepted ? Colors.green.shade900 : Colors.red.shade900,
-                        height: 1.4,
-                      ),
-                    ),
-                    const Divider(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Kekuatan Medan Magnet:', style: TextStyle(fontWeight: FontWeight.w500)),
-                        Text(
-                          '${res.meanTotalFieldNt.toStringAsFixed(0)} nT',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Data Terkumpul:', style: TextStyle(color: Colors.grey)),
-                        Text('${res.sampleCount} sampel ($_selectedDurationSeconds detik)'),
-                      ],
-                    ),
-
-                    // Rincian Teknis Geofisika (Expandable / Toggle)
-                    const SizedBox(height: 10),
-                    InkWell(
-                      onTap: () {
-                        setState(() => _showTechnicalDetails = !_showTechnicalDetails);
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              _showTechnicalDetails ? 'Sembunyikan Rincian Teknis ▲' : 'Lihat Rincian Teknis Geofisika ▼',
-                              style: TextStyle(fontSize: 12, color: Colors.indigo.shade700, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (_showTechnicalDetails) ...[
-                      const Divider(height: 16),
-                      _buildResultRow('Simpangan Baku (σ):', '${res.stdDevTotalFieldNt.toStringAsFixed(1)} nT (Batas < 1000 nT)'),
-                      _buildResultRow('Median Medan Total:', '${res.medianTotalFieldNt.toStringAsFixed(1)} nT'),
-                      _buildResultRow('Status Asli:', '${res.qualityFlag} (${res.statusReason})'),
-                    ],
-                  ],
-                ),
-              ),
+              _buildResultCard(res, theme),
               const SizedBox(height: 14),
 
-              // Tombol Simpan / Ulangi
-              if (res.isAccepted)
-                ElevatedButton.icon(
-                  icon: Icon(_isSaved ? Icons.check : Icons.save),
-                  label: Text(
-                    _isSaved
-                        ? 'Tersimpan ✓ (Lanjut ke Stasiun Berikutnya)'
-                        : 'Simpan Titik Stasiun #$_nextStationSequence ke Database',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: _isSaved ? Colors.grey : Colors.green.shade700,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  onPressed: _isSaved ? null : _saveStationToDatabase,
-                )
-              else
+              // Tombol Simpan / Ulangi / Lanjut
+              if (res.isAccepted) ...[
+                if (!_isSaved)
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.save),
+                    label: Text(
+                      'Simpan Titik Stasiun #$_nextStationSequence ke Database',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: _saveStationToDatabase,
+                  )
+                else
+                  _buildPostSaveActions(theme),
+              ] else
                 ElevatedButton.icon(
                   icon: const Icon(Icons.refresh),
                   label: const Text(
@@ -834,33 +804,393 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
     );
   }
 
-  Widget _buildStatBox(String label, String value, IconData icon) {
+  Widget _buildStepIndicator(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final currentStep = _isSaved ? 3 : (_aggregationResult != null ? 3 : (_isRecording ? 2 : 1));
+
+    Widget stepPill(int stepNumber, String title, IconData icon, bool isActive, bool isDone) {
+      Color bg;
+      Color fg;
+      if (isDone) {
+        bg = Colors.green.shade700;
+        fg = Colors.white;
+      } else if (isActive) {
+        bg = theme.colorScheme.primary;
+        fg = theme.colorScheme.onPrimary;
+      } else {
+        bg = isDark ? Colors.grey.shade900 : Colors.grey.shade200;
+        fg = isDark ? Colors.grey.shade400 : Colors.grey.shade700;
+      }
+
+      return Expanded(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(isDone ? Icons.check : icon, size: 14, color: fg),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Langkah $stepNumber',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: fg,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 9,
+                  color: fg,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          stepPill(1, 'Posisi GPS', Icons.location_on, currentStep == 1, currentStep > 1),
+          stepPill(2, 'Rekam 5s', Icons.timer, currentStep == 2, currentStep > 2),
+          stepPill(3, 'Simpan Titik', Icons.save, currentStep == 3, _isSaved),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultCard(StationAggregationResult res, ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+
+    final cardBg = res.isAccepted
+        ? (isDark ? const Color(0xFF132A17) : Colors.green.shade50)
+        : (isDark ? const Color(0xFF2E1515) : Colors.red.shade50);
+    final cardBorder = res.isAccepted
+        ? (isDark ? Colors.green.shade600 : Colors.green.shade400)
+        : (isDark ? Colors.red.shade400 : Colors.red.shade300);
+    final titleColor = res.isAccepted
+        ? (isDark ? const Color(0xFF81C784) : Colors.green.shade900)
+        : (isDark ? const Color(0xFFE57373) : Colors.red.shade900);
+    final textPrimary = isDark ? Colors.white : Colors.black87;
+    final textSecondary = isDark ? Colors.white70 : Colors.black54;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cardBorder, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                res.isAccepted ? Icons.check_circle : Icons.warning_amber_rounded,
+                color: res.isAccepted
+                    ? (isDark ? Colors.greenAccent : Colors.green.shade700)
+                    : (isDark ? Colors.redAccent : Colors.red.shade700),
+                size: 26,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  res.isAccepted
+                      ? '✓ Titik Stasiun Berhasil Direkam!'
+                      : '⚠️ HP Tadi Agak Bergoyang',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: titleColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            res.isAccepted
+                ? 'Posisi HP tenang dan hasil pengukuran medan magnetik stabil.'
+                : 'Sensor mendeteksi HP bergerak saat merekam. Mohon tahan HP tetap diam dan tenang selama $_selectedDurationSeconds detik ya.',
+            style: TextStyle(
+              fontSize: 13,
+              color: textPrimary,
+              height: 1.4,
+            ),
+          ),
+          Divider(
+            height: 20,
+            color: isDark ? Colors.white24 : Colors.black12,
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Kekuatan Medan Magnet:',
+                style: TextStyle(fontWeight: FontWeight.w600, color: textPrimary),
+              ),
+              Text(
+                '${res.meanTotalFieldNt.toStringAsFixed(0)} nT',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: res.isAccepted
+                      ? (isDark ? Colors.greenAccent : Colors.green.shade800)
+                      : (isDark ? Colors.orangeAccent : Colors.orange.shade900),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Data Terkumpul:', style: TextStyle(color: textSecondary)),
+              Text(
+                '${res.sampleCount} sampel ($_selectedDurationSeconds detik)',
+                style: TextStyle(color: textPrimary, fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+
+          // Penjelasan Ramah Pemula untuk Hasil Ini
+          if (res.isAccepted) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.black38 : Colors.white.withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isDark ? Colors.white12 : Colors.green.shade200,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.lightbulb_outline, size: 16, color: Colors.amber),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Arti & Manfaat Hasil Titik Ini:',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '• Nilai ${res.meanTotalFieldNt.toStringAsFixed(0)} nT: ${_interpretMagneticValue(res.meanTotalFieldNt)}',
+                    style: TextStyle(fontSize: 11, color: textSecondary, height: 1.3),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '• Untuk apa data ini? Data ini dicatat sebagai Titik Stasiun #$_nextStationSequence. Untuk membentuk Peta Sebaran Batuan/Logam 2D, lakukan rekam di minimal 3–5 titik berbeda (misal bergeser beberapa langkah).',
+                    style: TextStyle(fontSize: 11, color: textSecondary, height: 1.3),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Rincian Teknis Geofisika (Expandable / Toggle)
+          const SizedBox(height: 10),
+          InkWell(
+            onTap: () {
+              setState(() => _showTechnicalDetails = !_showTechnicalDetails);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    _showTechnicalDetails
+                        ? 'Sembunyikan Rincian Teknis ▲'
+                        : 'Lihat Rincian Teknis Geofisika ▼',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.lightBlueAccent : Colors.indigo.shade700,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_showTechnicalDetails) ...[
+            Divider(height: 16, color: isDark ? Colors.white24 : Colors.black12),
+            _buildResultRow(
+              'Simpangan Baku (σ):',
+              '${res.stdDevTotalFieldNt.toStringAsFixed(1)} nT (Batas < 1000 nT)',
+              textSecondary,
+              textPrimary,
+            ),
+            _buildResultRow(
+              'Median Medan Total:',
+              '${res.medianTotalFieldNt.toStringAsFixed(1)} nT',
+              textSecondary,
+              textPrimary,
+            ),
+            _buildResultRow(
+              'Status Asli:',
+              '${res.qualityFlag} (${res.statusReason})',
+              textSecondary,
+              textPrimary,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPostSaveActions(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF142E18) : Colors.green.shade100,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.green.shade600),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.check_circle,
+                color: isDark ? Colors.greenAccent : Colors.green.shade800,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Titik Stasiun Tersimpan di Database! ✓',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: isDark ? Colors.green.shade100 : Colors.green.shade900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.arrow_forward),
+            label: Text(
+              'Lanjut Rekam Titik Stasiun #$_nextStationSequence (Pindah Posisi)',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              backgroundColor: Colors.green.shade700,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              setState(() {
+                _aggregationResult = null;
+                _stationSamples.clear();
+                _isSaved = false;
+              });
+            },
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.map_outlined),
+            label: const Text(
+              'Buka & Lihat Peta Anomali 2D Sekarang',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              foregroundColor: isDark ? Colors.tealAccent : Colors.teal.shade800,
+              side: BorderSide(
+                color: isDark ? Colors.tealAccent : Colors.teal.shade700,
+              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AnomalyMapScreen(database: _database),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _interpretMagneticValue(double valueNt) {
+    if (valueNt >= 38000 && valueNt <= 48000) {
+      return 'Kondisi normal medan bumi di wilayah Indonesia.';
+    } else if (valueNt > 48000) {
+      return 'Medan magnet tinggi (ada respons batuan mineral magnetik atau struktur logam lokal).';
+    } else {
+      return 'Medan magnet rendah (anomali negatif lokal).';
+    }
+  }
+
+  Widget _buildStatBox(String label, String value, IconData icon, ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
     return Column(
       children: [
-        Icon(icon, color: Colors.blueGrey),
+        Icon(icon, color: isDark ? Colors.tealAccent : Colors.teal.shade700),
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.onSurface,
+          ),
         ),
         Text(
           label,
-          style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? Colors.white60 : Colors.blueGrey.shade600,
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildResultRow(String label, String value) {
+  Widget _buildResultRow(String label, String value, Color labelColor, Color valueColor) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 13)),
+          Text(label, style: TextStyle(fontSize: 12, color: labelColor)),
           Text(
             value,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: valueColor),
           ),
         ],
       ),
