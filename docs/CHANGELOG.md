@@ -5,6 +5,7 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Laporan pengujian dan verifikasi Fase 2 (Stasiun, Base Station, Koreksi Harian, dan IGRF) di `docs/laporan_uji_fase_2.md`
 - Model medan utama bumi IGRF-14 (`IgrfService` di Dart & `reference/igrf.py` di Python) dengan ekspansi harmonik bola Schmidt semi-normalized derajat $n=13$ dan secular variation 2025–2030 (#21)
 - Tabel koefisien resmi IGRF-14 IAGA (`app/lib/services/igrf_coefficients.dart` & `reference/igrf14coeffs.txt`) (#21)
 - Kalkulasi medan total $F_{\text{IGRF}}$, deklinasi, inklinasi, komponen horizontal, serta anomali medan total $\Delta T = B_{\text{obs}} - B_{\text{diurnal}} - F_{\text{IGRF}}$ (#21)
