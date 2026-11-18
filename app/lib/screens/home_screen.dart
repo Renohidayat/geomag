@@ -8,6 +8,7 @@ import '../models/magnetometer_sample.dart';
 import '../models/sensor_info.dart';
 import '../services/magnetometer_service.dart';
 import '../services/recording_session_service.dart';
+import 'anomaly_map_screen.dart';
 import 'base_station_screen.dart';
 import 'calibration_screen.dart';
 import 'noise_test_screen.dart';
@@ -227,6 +228,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 MaterialPageRoute(
                   builder: (context) => NoiseTestScreen(
                     service: _magnetometerService,
+                    database: _database,
+                  ),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.map_outlined),
+            tooltip: 'Peta Anomali 2D',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => AnomalyMapScreen(
                     database: _database,
                   ),
                 ),

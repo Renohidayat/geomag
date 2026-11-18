@@ -5,6 +5,14 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Layar peta anomali 2D interaktif `AnomalyMapScreen` dengan rendering kanvas `InteractiveViewer` dan `GridMapPainter` (#29)
+- Visualisasi colormap geofisika kontinum 6 titik kontrol (Deep Blue -> Cyan -> Green -> Yellow -> Orange -> Deep Red) (#29)
+- Colorbar legenda dinamis dengan skala nilai min/max dan satuan nT atau nT/m (#29)
+- Selektor lapisan peta: Medan Total ($B_{obs}$), Anomali Medan Total ($\Delta T$), dan Magnitudo Analytic Signal 3D ($|AS|$) (#29)
+- Overlay marker stasiun interaktif dengan status mutu (ACCEPTED, FLAGGED, REJECTED) dan dialog kartu detail informasi titik (#29)
+- Generator data demo sintetis otomatis untuk visualisasi instan dan pengujian lapangan tanpa database (#29)
+- Integrasi ikon tombol navigasi peta pada AppBar `HomeScreen` (#29)
+- Widget test untuk layar peta anomali 2D, pemuatan database stasiun, serta pergantian layer visualisasi (#29)
 - Modul gridding 2D Inverse Distance Weighting (`GriddingService` di Dart & `reference/gridding.py` di Python) untuk interpolasi spasial titik stasiun tak beraturan ke matriks grid (#28)
 - Modul perhitungan magnitudo Analytic Signal 3D (`AnalyticSignalService` di Dart & `reference/analytic_signal.py` di Python) dengan turunan horizontal diferensial berpusat dan turunan vertikal transformasi Fourier 2D (FFT) (#28)
 - Unit test komparasi Dart vs Python untuk gridding simpul eksak dan lokalisasi puncak $|AS|$ pada anomali dipol vertikal (#28)
