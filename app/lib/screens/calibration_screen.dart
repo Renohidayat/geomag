@@ -148,6 +148,9 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
 
   StreamSubscription<MagnetometerSample>? _subscription;
   final List<List<double>> _recordedPoints = [];
+  double _runningSumX = 0.0;
+  double _runningSumY = 0.0;
+  double _runningSumZ = 0.0;
 
   double? _currentUx;
   double? _currentUy;
@@ -183,15 +186,35 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
       final y = sample.rawYMicroT;
       final z = sample.rawZMicroT;
 
-      final norm = sqrt(x * x + y * y + z * z);
+      _recordedPoints.add([x, y, z]);
+      _runningSumX += x;
+      _runningSumY += y;
+      _runningSumZ += z;
+
+      // Estimasi pusat hard-iron dari OS atau running mean sampel
+      double cx = sample.biasXMicroT;
+      double cy = sample.biasYMicroT;
+      double cz = sample.biasZMicroT;
+
+      final n = _recordedPoints.length;
+      if (cx == 0.0 && cy == 0.0 && cz == 0.0 && n >= 20) {
+        cx = _runningSumX / n;
+        cy = _runningSumY / n;
+        cz = _runningSumZ / n;
+      }
+
+      final dx = x - cx;
+      final dy = y - cy;
+      final dz = z - cz;
+      final norm = sqrt(dx * dx + dy * dy + dz * dz);
+
       if (norm > 1e-3) {
-        _recordedPoints.add([x, y, z]);
-        _tracker.addSample(x, y, z);
+        _tracker.addSample(x, y, z, centerX: cx, centerY: cy, centerZ: cz);
 
         setState(() {
-          _currentUx = x / norm;
-          _currentUy = y / norm;
-          _currentUz = z / norm;
+          _currentUx = dx / norm;
+          _currentUy = dy / norm;
+          _currentUz = dz / norm;
         });
       }
     });
@@ -200,6 +223,9 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
   void _resetCalibration() {
     setState(() {
       _recordedPoints.clear();
+      _runningSumX = 0.0;
+      _runningSumY = 0.0;
+      _runningSumZ = 0.0;
       _tracker.reset();
       _calibrationResult = null;
       _isSaved = false;
@@ -281,7 +307,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     final totalCount = _tracker.totalSectorCount;
     final sampleCount = _recordedPoints.length;
     final isReadyToCalibrate =
-        coverage >= 50.0 && sampleCount >= widget.minSamples;
+        coverage >= 45.0 && sampleCount >= widget.minSamples;
 
     return Scaffold(
       appBar: AppBar(

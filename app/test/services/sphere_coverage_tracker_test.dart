@@ -82,5 +82,40 @@ void main() {
       expect(tracker.coveredSectorCount, equals(0));
       expect(tracker.coveragePercentage, equals(0.0));
     });
+
+    test('addSample dengan parameter pemusatan centerX, centerY, centerZ', () {
+      // Offset hard-iron 100 uT di sumbu X, Y, Z
+      const bx = 100.0;
+      const by = 80.0;
+      const bz = -50.0;
+
+      // Titik di kutub utara (+Z) ditambah offset
+      for (var i = 0; i < 3; i++) {
+        final sectorId = tracker.addSample(
+          bx,
+          by,
+          bz + 45.0,
+          centerX: bx,
+          centerY: by,
+          centerZ: bz,
+        );
+        expect(sectorId, equals(0)); // id 0 adalah kutub atas
+      }
+
+      // Titik di kutub selatan (-Z) ditambah offset
+      for (var i = 0; i < 3; i++) {
+        final sectorId = tracker.addSample(
+          bx,
+          by,
+          bz - 45.0,
+          centerX: bx,
+          centerY: by,
+          centerZ: bz,
+        );
+        expect(sectorId, equals(17)); // id 17 adalah kutub bawah
+      }
+
+      expect(tracker.coveredSectorCount, equals(2));
+    });
   });
 }

@@ -114,13 +114,24 @@ class SphereCoverageTracker {
   }
 
   /// Menambahkan sampel bacaan sensor mentah (mikroTesla) dan memperbarui sektor.
-  int? addSample(double x, double y, double z) {
-    final norm = sqrt(x * x + y * y + z * z);
+  /// Parameter opsional [centerX], [centerY], [centerZ] memusatkan koordinat jika ada hard-iron offset.
+  int? addSample(
+    double x,
+    double y,
+    double z, {
+    double centerX = 0.0,
+    double centerY = 0.0,
+    double centerZ = 0.0,
+  }) {
+    final dx = x - centerX;
+    final dy = y - centerY;
+    final dz = z - centerZ;
+    final norm = sqrt(dx * dx + dy * dy + dz * dz);
     if (norm < 1e-4) return null;
 
-    final ux = x / norm;
-    final uy = y / norm;
-    final uz = z / norm;
+    final ux = dx / norm;
+    final uy = dy / norm;
+    final uz = dz / norm;
 
     for (final sector in sectors) {
       if (sector.contains(ux, uy, uz)) {

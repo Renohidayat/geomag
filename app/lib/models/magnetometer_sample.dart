@@ -65,6 +65,26 @@ class MagnetometerSample {
   /// Total field dalam nanoTesla.
   double get totalFieldNt => totalFieldMicroT * 1000.0;
 
+  /// Vektor X terkoreksi estimasi bias hard-iron OS Android (mikroTesla).
+  double get calibratedXMicroT => rawXMicroT - biasXMicroT;
+
+  /// Vektor Y terkoreksi estimasi bias hard-iron OS Android (mikroTesla).
+  double get calibratedYMicroT => rawYMicroT - biasYMicroT;
+
+  /// Vektor Z terkoreksi estimasi bias hard-iron OS Android (mikroTesla).
+  double get calibratedZMicroT => rawZMicroT - biasZMicroT;
+
+  /// Magnitudo total field terkoreksi estimasi bias hard-iron OS Android (mikroTesla).
+  double get calibratedTotalFieldMicroT {
+    final cx = calibratedXMicroT;
+    final cy = calibratedYMicroT;
+    final cz = calibratedZMicroT;
+    return sqrt(cx * cx + cy * cy + cz * cz);
+  }
+
+  /// Total field terkoreksi estimasi bias hard-iron OS Android (nanoTesla).
+  double get calibratedTotalFieldNt => calibratedTotalFieldMicroT * 1000.0;
+
   /// Membuat instance dari Map yang dikirim EventChannel Kotlin.
   factory MagnetometerSample.fromEventData(Map<Object?, Object?> data) {
     return MagnetometerSample(
