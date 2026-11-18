@@ -5,6 +5,11 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Implementasi `CsvExportService` untuk format dan ekspor file CSV sampel magnetometer mentah (#4)
+- Implementasi `RecordingSessionService` dengan batch buffering untuk perekaman frekuensi tinggi dan jaminan zero data loss (#4)
+- Integrasi penyimpanan otomatis sesi rekam ke SQLite dan tombol ekspor CSV pada `HomeScreen` (#4)
+- Unit test format CSV, pipeline ekspor file, dan lifecycle batch session (#4)
+- Sampel dataset pengujian di `test/fixtures/sample_station_data.csv` (#4)
 - Penyempurnaan antarmuka real-time dengan timer durasi rekam, indikator visual kestabilan sinyal $\sigma$, dan peringatan pengisian daya (#3)
 - Widget test interaktif untuk verifikasi alur mulai/berhenti rekam dan visualisasi stream sampel (#3)
 - Implementasi penyimpanan lokal SQLite via Drift sesuai ERD (#2)

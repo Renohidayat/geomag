@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geomag/database/app_database.dart';
 import 'package:geomag/models/magnetometer_sample.dart';
 import 'package:geomag/models/sensor_info.dart';
 import 'package:geomag/screens/home_screen.dart';
@@ -45,10 +47,11 @@ void main() {
   testWidgets('HomeScreen menampilkan info sensor dan tombol rekam',
       (tester) async {
     final mockService = MockMagnetometerService();
+    final testDb = AppDatabase(NativeDatabase.memory());
 
     await tester.pumpWidget(
       MaterialApp(
-        home: HomeScreen(service: mockService),
+        home: HomeScreen(service: mockService, database: testDb),
       ),
     );
 
@@ -61,15 +64,18 @@ void main() {
     expect(find.text('Mulai Rekam'), findsOneWidget);
 
     mockService.close();
+    await testDb.close();
   });
 
-  testWidgets('HomeScreen menampilkan data real-time saat streaming sampel',
+  testWidgets(
+      'HomeScreen menampilkan data real-time, menyimpan sampel, dan menampilkan tombol ekspor CSV',
       (tester) async {
     final mockService = MockMagnetometerService();
+    final testDb = AppDatabase(NativeDatabase.memory());
 
     await tester.pumpWidget(
       MaterialApp(
-        home: HomeScreen(service: mockService),
+        home: HomeScreen(service: mockService, database: testDb),
       ),
     );
 
@@ -113,9 +119,12 @@ void main() {
     // Tekan Berhenti
     await tester.tap(find.textContaining('Berhenti'));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('Mulai Rekam'), findsOneWidget);
+    expect(find.text('Ekspor Data Stasiun ke CSV'), findsOneWidget);
 
     mockService.close();
+    await testDb.close();
   });
 }
