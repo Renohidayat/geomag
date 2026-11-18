@@ -5,6 +5,11 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Desain antarmuka baru yang ramah pengguna (user-friendly) untuk pemula dan praktisi lapangan tanpa mengurangi akurasi ilmiah (#45)
+- Widget meteran jarum analog (`AnalogGaugeWidget`) dinamis ala Ultimate EMF Detector dengan busur warna 240 derajat (Zona Normal Medan Bumi, Anomali Sedang, hingga Anomali Kuat Batuan/Logam), status badge responsif, dan indikator jarum halus (#45)
+- Widget grafik gelombang real-time dinamis (`LiveWaveformChart`) ala Phyphox dengan garis kisi (*gridlines*), area gradien, indikator LIVE, serta ringkasan metrik Min, Kini, dan Maksimum (#45)
+- Rombak total beranda utama `HomeScreen` dengan kartu navigasi besar bergambar dan bahasa Indonesia formal yang jelas serta mudah dipahami orang awam (Peta Sebaran Batuan 2D, Survei Titik Lapangan, Kalibrasi Sensor, Uji Kestabilan Sensor, Laporan Mutu Data, dan Perekaman Stasiun Pangkalan) (#45)
+- Unit test komprehensif untuk widget jarum meteran analog dan grafik gelombang real-time (#45)
 - Laporan pengujian dan verifikasi Fase 4 (Validasi, Hardening, GNSS Eksternal, dan Laporan Mutu) di `docs/laporan_uji_fase_4.md`
 - Modul analisis komparasi keterulangan dan konsistensi multi-smartphone / multi-sesi (`RepeatabilityAnalysisService` di Dart & `reference/repeatability.py` di Python) (#39)
 - Perhitungan komprehensif metrik keterulangan profil survei: bias rata-rata, beda absolut rata-rata (MAD), RMSE, koefisien korelasi Pearson ($r$), batas toleransi $2 \times \text{lantai noise}$, dan rasio titik lolos (#39)
