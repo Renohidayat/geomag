@@ -5,6 +5,10 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Modul Reduction to Pole (RTP) teratur untuk lintang magnetik rendah Indonesia (`RtpService` di Dart & `reference/rtp_low_latitude.py` di Python) dengan regularisasi phase-preserving pseudo-inclination (#38)
+- Pencegahan singularitas operator RTP pada ekuator magnetik ($|I| < 20^\circ$) dengan pembatasan amplitudo $\delta = \sin^2(I_p)$ tanpa distorsi fase kutub (#38)
+- Integrasi opsi layer tampilan `RTP` pada `AnomalyMapScreen` dan ekspor grid RTP ke format ESRI ASCII Grid (.asc) (#38)
+- Unit test Dart dan Python untuk verifikasi kestabilan amplitudo, penanganan anomali dipol miring, dan ekspor raster RTP (#38)
 - Modul parser stream NMEA-0183 (`NmeaParserService` di Dart & `reference/nmea_parser.py` di Python) untuk integrasi GNSS eksternal Bluetooth berakurasi tinggi (DGPS/RTK) (#37)
 - Dukungan kalimat NMEA GGA ($xxGGA) dan RMC ($xxRMC) dengan ekstraksi koordinat derajat desimal WGS-84, elevasi, HDOP, satelit, dan kualitas fix (#37)
 - Validasi ketat checksum XOR NMEA dan penanganan otomatis format koordinat belahan bumi selatan/timur Indonesia (#37)
