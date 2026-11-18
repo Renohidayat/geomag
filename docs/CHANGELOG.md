@@ -5,6 +5,9 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Layar mode base station `BaseStationScreen` dengan monitoring kontinu dan visualisasi time-series kurva drift harian (`DriftCurvePainter`) (#19)
+- `BaseStationService` untuk perekaman kontinu background dengan batch buffer aman ke Drift SQLite dan kalkulasi baseline $B_0$ (#19)
+- Ekspor dataset rekaman base station ke file CSV berformat standar geomagnetik (#19)
 - Layar survei rover `StationSurveyScreen` dengan pemilihan survei, koordinat GNSS, countdown timer diam stasiun, dan auto-increment nomor stasiun (#18)
 - `StationAggregationService` untuk menghitung rata-rata, simpangan baku, median medan total, serta protokol penolakan otomatis stasiun noisy (#18)
 - Integrasi penyimpanan stasiun, hasil ringkasan agregat, dan sampel mentah batch ke Drift SQLite (`Stations`, `StationResults`, `Samples`) (#18)
