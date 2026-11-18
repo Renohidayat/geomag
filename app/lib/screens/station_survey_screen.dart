@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../database/app_database.dart';
 import '../models/magnetometer_sample.dart';
 import '../services/magnetometer_service.dart';
+import '../services/nmea_parser_service.dart';
 import '../services/station_aggregation_service.dart';
 
 /// Layar survei stasiun rover: perekaman diam, evaluasi mutu statistik, dan penyimpanan ke database.
@@ -13,6 +14,7 @@ class StationSurveyScreen extends StatefulWidget {
   final MagnetometerService? service;
   final AppDatabase? database;
   final StationAggregationService? aggregationService;
+  final NmeaParserService? nmeaParser;
   final int recordDurationSeconds;
   final double maxStdDevNt;
   final int minSamples;
@@ -22,6 +24,7 @@ class StationSurveyScreen extends StatefulWidget {
     this.service,
     this.database,
     this.aggregationService,
+    this.nmeaParser,
     this.recordDurationSeconds = 30, // Default 30 detik
     this.maxStdDevNt = 1000.0,
     this.minSamples = 100,
@@ -35,6 +38,7 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
   late final MagnetometerService _magService;
   late final AppDatabase _database;
   late final StationAggregationService _aggregationService;
+  late final NmeaParserService _nmeaParser;
 
   StreamSubscription<MagnetometerSample>? _subscription;
   Timer? _countdownTimer;
@@ -48,6 +52,9 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
   final TextEditingController _lonController = TextEditingController(text: '106.845600');
   final TextEditingController _altController = TextEditingController(text: '25.0');
 
+  bool _useExternalGnss = false;
+  NmeaPosition? _externalGnssPosition;
+
   bool _isRecording = false;
   int _remainingSeconds = 0;
   final List<MagnetometerSample> _stationSamples = [];
@@ -60,6 +67,7 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
     super.initState();
     _magService = widget.service ?? MagnetometerService();
     _database = widget.database ?? AppDatabase();
+    _nmeaParser = widget.nmeaParser ?? const NmeaParserService();
     _aggregationService = widget.aggregationService ??
         StationAggregationService(
           maxStdDevNt: widget.maxStdDevNt,
@@ -265,6 +273,95 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
     }
   }
 
+  void _applyNmeaSentence(String sentence) {
+    final pos = _nmeaParser.parseSentence(sentence);
+    if (pos != null) {
+      setState(() {
+        _externalGnssPosition = pos;
+        _latController.text = pos.latitude.toStringAsFixed(6);
+        _lonController.text = pos.longitude.toStringAsFixed(6);
+        if (pos.altitudeM != null) {
+          _altController.text = pos.altitudeM!.toStringAsFixed(1);
+        }
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Posisi GNSS diperbarui: ${pos.fixQuality.label} (HDOP: ${pos.hdop ?? "-"})'),
+            backgroundColor: Colors.green.shade700,
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Kalimat NMEA tidak valid atau checksum salah!'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showNmeaInputDialog() {
+    final textController = TextEditingController(
+      text:
+          '\$GNGGA,072412.00,0653.4800,S,10736.7200,E,4,18,0.65,765.20,M,25.4,M,1.2,0001*41',
+    );
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.bluetooth, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('Input Stream NMEA GNSS', style: TextStyle(fontSize: 16)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Masukkan atau tempel kalimat NMEA (GGA / RMC) dari receiver GNSS eksternal Bluetooth (DGPS / RTK):',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: textController,
+              maxLines: 3,
+              style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: '\$GNGGA,123456...*CS',
+                isDense: true,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final text = textController.text.trim();
+              Navigator.pop(ctx);
+              if (text.isNotEmpty) {
+                _applyNmeaSentence(text);
+              }
+            },
+            child: const Text('Terapkan Koordinat'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final res = _aggregationResult;
@@ -317,6 +414,88 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                       ],
                     ),
                     const Divider(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Sumber Posisi:',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                        SegmentedButton<bool>(
+                          segments: const [
+                            ButtonSegment(
+                              value: false,
+                              label: Text('GPS HP', style: TextStyle(fontSize: 11)),
+                              icon: Icon(Icons.smartphone, size: 14),
+                            ),
+                            ButtonSegment(
+                              value: true,
+                              label: Text('NMEA Eksternal', style: TextStyle(fontSize: 11)),
+                              icon: Icon(Icons.bluetooth, size: 14),
+                            ),
+                          ],
+                          selected: {_useExternalGnss},
+                          onSelectionChanged: (val) {
+                            setState(() => _useExternalGnss = val.first);
+                          },
+                        ),
+                      ],
+                    ),
+                    if (_useExternalGnss) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: _externalGnssPosition != null
+                              ? Colors.green.withValues(alpha: 0.1)
+                              : Colors.orange.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _externalGnssPosition != null
+                                ? Colors.green.shade400
+                                : Colors.orange.shade400,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _externalGnssPosition != null
+                                  ? Icons.gps_fixed
+                                  : Icons.gps_not_fixed,
+                              size: 20,
+                              color: _externalGnssPosition != null
+                                  ? Colors.green.shade700
+                                  : Colors.orange.shade700,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _externalGnssPosition != null
+                                        ? 'Fix: ${_externalGnssPosition!.fixQuality.label} (Sat: ${_externalGnssPosition!.satellites ?? "-"}, HDOP: ${_externalGnssPosition!.hdop ?? "-"})'
+                                        : 'Belum ada kalimat NMEA terhubung',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                  if (_externalGnssPosition != null)
+                                    Text(
+                                      'Alt: ${_externalGnssPosition!.altitudeM?.toStringAsFixed(1) ?? "-"}m • Tipe: ${_externalGnssPosition!.sentenceType}',
+                                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            TextButton.icon(
+                              icon: const Icon(Icons.input, size: 16),
+                              label: const Text('Input NMEA', style: TextStyle(fontSize: 11)),
+                              onPressed: _showNmeaInputDialog,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
                     const Text(
                       'Koordinat Lokasi Stasiun:',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
