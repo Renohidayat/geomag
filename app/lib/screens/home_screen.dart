@@ -8,6 +8,8 @@ import '../models/magnetometer_sample.dart';
 import '../models/sensor_info.dart';
 import '../services/magnetometer_service.dart';
 import '../services/recording_session_service.dart';
+import '../widgets/analog_gauge_widget.dart';
+import '../widgets/live_waveform_chart.dart';
 import 'anomaly_map_screen.dart';
 import 'base_station_screen.dart';
 import 'calibration_screen.dart';
@@ -15,7 +17,8 @@ import 'noise_test_screen.dart';
 import 'station_survey_screen.dart';
 import 'survey_quality_report_screen.dart';
 
-/// Layar utama: menampilkan data magnetometer real-time dan metrik instrumen.
+/// Layar utama: menampilkan data magnetometer real-time dan metrik instrumen
+/// dengan antarmuka ramah pengguna (meteran jarum analog & grafik gelombang).
 class HomeScreen extends StatefulWidget {
   final MagnetometerService? service;
   final AppDatabase? database;
@@ -40,6 +43,9 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime? _recordingStartTime;
   Timer? _durationTimer;
   Duration _recordingDuration = Duration.zero;
+
+  // Riwayat data gelombang untuk grafik real-time bergulir ala Phyphox
+  final List<double> _waveformHistory = [];
 
   // Statistik running
   int _displaySampleCount = 0;
@@ -79,6 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _displaySampleCount = 0;
     _sumTotalFieldMicroT = 0.0;
     _sumTotalFieldSqMicroT = 0.0;
+    _waveformHistory.clear();
     _recordingStartTime = DateTime.now();
     _recordingDuration = Duration.zero;
     _exportedFilePath = null;
@@ -102,6 +109,12 @@ class _HomeScreenState extends State<HomeScreen> {
         final tf = sample.totalFieldMicroT;
         _sumTotalFieldMicroT += tf;
         _sumTotalFieldSqMicroT += tf * tf;
+
+        final totalNt = tf * 1000.0;
+        _waveformHistory.add(totalNt);
+        if (_waveformHistory.length > 80) {
+          _waveformHistory.removeAt(0);
+        }
 
         setState(() => _lastSample = sample);
       },
@@ -160,39 +173,36 @@ class _HomeScreenState extends State<HomeScreen> {
     final n = _displaySampleCount.toDouble();
     final mean = _sumTotalFieldMicroT / n;
     final variance = (_sumTotalFieldSqMicroT / n) - (mean * mean);
-    return variance > 0 ? variance.clamp(0, double.infinity) : 0.0;
+    return variance > 0.0 ? (variance > 1e-12 ? _sqrt(variance) : 0.0) : 0.0;
   }
 
-  /// Simpangan baku total field dalam nanoTesla.
-  double get _stdDevNt => _stdDevMicroT * 1000.0;
+  double _sqrt(double v) {
+    if (v <= 0.0) return 0.0;
+    var x = v;
+    for (var i = 0; i < 15; i++) {
+      x = 0.5 * (x + v / x);
+    }
+    return x;
+  }
+
+  String _formatDuration(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final currentFieldNt = _lastSample != null ? _lastSample!.totalFieldNt : 45000.0;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('GeoMag - Survei Magnetik'),
-        centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.podcasts),
-            tooltip: 'Mode Base Station',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => BaseStationScreen(
-                    service: _magnetometerService,
-                    database: _database,
-                  ),
-                ),
-              );
-            },
-          ),
-          IconButton(
             icon: const Icon(Icons.location_on_outlined),
-            tooltip: 'Survei Stasiun Rover',
+            tooltip: 'Survei Stasiun (Rover)',
             onPressed: () {
               Navigator.push(
                 context,
@@ -266,12 +276,21 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildSensorInfoCard(theme),
+            // 1. Meteran Jarum Analog Visual (Speedometer ala Ultimate EMF Detector)
+            AnalogGaugeWidget(valueNt: currentFieldNt),
             const SizedBox(height: 12),
+
+            // 2. Grafik Gelombang Real-Time yang Bergulir Dinamis (ala Phyphox)
+            if (_waveformHistory.isNotEmpty) ...[
+              LiveWaveformChart(historyNt: _waveformHistory),
+              const SizedBox(height: 12),
+            ],
+
+            // Pesan Error jika terjadi kendala
             if (_errorMessage != null)
               Card(
                 color: theme.colorScheme.errorContainer,
@@ -283,6 +302,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+
+            // Feedback Ekspor CSV
             if (_exportedFilePath != null)
               Card(
                 color: Colors.green.withValues(alpha: 0.15),
@@ -302,6 +323,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+
+            // 3. Menu Navigasi Dashboard Utama yang Ramah Pengguna
+            _buildDashboardNavigation(theme),
+            const SizedBox(height: 16),
+
+            // 4. Data Sumbu Tiga Dimensi & Statistik Saat Streaming Aktif
             if (_lastSample != null) ...[
               _buildMagDataCard(theme),
               const SizedBox(height: 12),
@@ -319,30 +346,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ],
+              const SizedBox(height: 12),
             ],
-            if (!_isRecording && _lastSample == null)
-              Padding(
-                padding: const EdgeInsets.only(top: 48),
-                child: Center(
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.sensors,
-                        size: 64,
-                        color: theme.colorScheme.primary.withValues(alpha: 0.5),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Tekan tombol di bawah untuk mulai streaming sensor',
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+
+            // 5. Kartu Info Sensor HP
+            _buildSensorInfoCard(theme),
+            const SizedBox(height: 60), // Padding bawah agar tidak tertutup tombol FAB
           ],
         ),
       ),
@@ -360,6 +369,196 @@ class _HomeScreenState extends State<HomeScreen> {
         foregroundColor: _isRecording
             ? theme.colorScheme.onError
             : theme.colorScheme.onPrimary,
+      ),
+    );
+  }
+
+  /// Dashboard kartu navigasi utama dengan bahasa Indonesia yang jelas, formal, dan ramah pemula.
+  Widget _buildDashboardNavigation(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Text(
+            'Fitur Utama Aplikasi',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        // Menu 1: Peta Sebaran Batuan 2D (Paling Penting & Keren)
+        _buildNavCard(
+          theme: theme,
+          title: 'Peta Sebaran Batuan 2D',
+          subtitle: 'Melihat peta kontur warna sebaran anomali batuan & logam di bawah tanah',
+          icon: Icons.map,
+          color: Colors.blueAccent,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => AnomalyMapScreen(database: _database)),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+
+        // Menu 2: Survei Titik Lapangan (Mode Rover)
+        _buildNavCard(
+          theme: theme,
+          title: 'Survei Titik Lapangan (Mode Rover)',
+          subtitle: 'Merekam data medan magnetik di patok-patok survei secara bertahap',
+          icon: Icons.location_on,
+          color: Colors.teal,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => StationSurveyScreen(
+                  service: _magnetometerService,
+                  database: _database,
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+
+        // Menu 3: Kalibrasi Sensor HP
+        _buildNavCard(
+          theme: theme,
+          title: 'Kalibrasi Sensor Magnetik',
+          subtitle: 'Gerakkan HP membentuk angka 8 untuk menetralkan medan magnet baterai HP',
+          icon: Icons.screen_rotation,
+          color: Colors.deepPurpleAccent,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => CalibrationScreen(
+                  service: _magnetometerService,
+                  database: _database,
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+
+        // Menu 4: Uji Kestabilan Sensor (Noise)
+        _buildNavCard(
+          theme: theme,
+          title: 'Uji Kestabilan Sensor (Noise Floor)',
+          subtitle: 'Memeriksa ketenangan sensor HP agar hasil survei dapat diandalkan',
+          icon: Icons.analytics,
+          color: Colors.orange,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => NoiseTestScreen(
+                  service: _magnetometerService,
+                  database: _database,
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+
+        // Menu 5: Laporan Mutu Survei
+        _buildNavCard(
+          theme: theme,
+          title: 'Laporan Mutu Data Survei',
+          subtitle: 'Audit resmi kualitas pengukuran dengan penilaian Grade A/B/C/D',
+          icon: Icons.fact_check,
+          color: Colors.green,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => SurveyQualityReportScreen(database: _database),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+
+        // Menu 6: Stasiun Pangkalan (Base Station)
+        _buildNavCard(
+          theme: theme,
+          title: 'Perekaman Stasiun Pangkalan (Base Station)',
+          subtitle: 'Merekam variasi harian medan magnet bumi secara otomatis dan kontinu',
+          icon: Icons.radar,
+          color: Colors.indigo,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => BaseStationScreen(
+                  service: _magnetometerService,
+                  database: _database,
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNavCard({
+    required ThemeData theme,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      elevation: 1.5,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -449,8 +648,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-            _infoRow('Akurasi OS', _accuracyLabel(s.accuracy)),
           ],
         ),
       ),
@@ -458,57 +655,31 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildStatsCard(ThemeData theme) {
-    final service = _magnetometerService;
+    final mean = _displaySampleCount > 0
+        ? _sumTotalFieldMicroT / _displaySampleCount
+        : 0.0;
+    final stdDev = _stdDevMicroT;
+    final stdDevNt = stdDev * 1000.0;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Statistik Sampling & Stabilitas',
-                style: theme.textTheme.titleSmall),
+            Text('Statistik Perekaman', style: theme.textTheme.titleSmall),
             const Divider(),
             _infoRow('Jumlah sampel', '$_displaySampleCount'),
             _infoRow(
-              'Laju nyata',
-              '${service.actualRateHz.toStringAsFixed(1)} Hz',
+              'Rata-rata total field',
+              '${mean.toStringAsFixed(2)} µT  '
+              '(${(mean * 1000).toStringAsFixed(0)} nT)',
             ),
             _infoRow(
-              'Jitter antar-sampel',
-              '${service.jitterMs.toStringAsFixed(2)} ms',
+              'Simpangan baku (σ)',
+              '${stdDev.toStringAsFixed(3)} µT  '
+              '(${stdDevNt.toStringAsFixed(1)} nT)',
             ),
-            _infoRow(
-              'Interval rata-rata',
-              '${service.avgIntervalMs.toStringAsFixed(2)} ms',
-            ),
-            if (_displaySampleCount >= 2) ...[
-              const Divider(),
-              _infoRow(
-                'Simpangan baku σ',
-                '${_stdDevNt.toStringAsFixed(1)} nT (n=$_displaySampleCount)',
-              ),
-              const SizedBox(height: 6),
-              LinearProgressIndicator(
-                value: (_stdDevNt / 1000.0).clamp(0.0, 1.0),
-                backgroundColor: Colors.green.withValues(alpha: 0.2),
-                color: _stdDevNt < 300
-                    ? Colors.green
-                    : (_stdDevNt < 800 ? Colors.orange : Colors.red),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _stdDevNt < 300
-                    ? 'Sinyal tenang (σ < 300 nT)'
-                    : (_stdDevNt < 800
-                        ? 'Noise sedang (300–800 nT)'
-                        : 'Noise tinggi / ada gangguan (> 800 nT)'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: _stdDevNt < 300
-                      ? Colors.green
-                      : (_stdDevNt < 800 ? Colors.orange : Colors.red),
-                ),
-              ),
-            ],
           ],
         ),
       ),
@@ -517,27 +688,36 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildDeviceStatusCard(ThemeData theme) {
     final s = _lastSample!;
+    final temp = s.batteryTempC;
+    final isCharging = s.isCharging;
+    final isScreenOn = s.isScreenOn;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Status Kondisi Perangkat', style: theme.textTheme.titleSmall),
+            Text('Status Perangkat', style: theme.textTheme.titleSmall),
             const Divider(),
             _infoRow(
-              'Suhu baterai',
-              s.batteryTempC >= 0
-                  ? '${s.batteryTempC.toStringAsFixed(1)} °C'
-                  : 'Tidak tersedia',
+              'Akurasi sensor',
+              _accuracyLabel(s.accuracy),
             ),
             _infoRow(
-              'Status pengisian daya',
-              s.isCharging
-                  ? 'Mengisi daya (PERINGATAN: arus charging merusak medan!)'
+              'Suhu baterai',
+              '${temp.toStringAsFixed(1)} °C',
+            ),
+            _infoRow(
+              'Sumber daya',
+              isCharging == true
+                  ? 'Pengisian daya (PERINGATAN: dapat memicu noise)'
                   : 'Baterai (Aman ✓)',
             ),
-            _infoRow('Status layar', s.isScreenOn ? 'Menyala' : 'Mati'),
+            _infoRow(
+              'Layar',
+              isScreenOn == true ? 'Menyala' : 'Mati / Redup',
+            ),
           ],
         ),
       ),
@@ -546,12 +726,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _infoRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label),
-          Flexible(child: Text(value, textAlign: TextAlign.end)),
+          Text(label, style: const TextStyle(color: Colors.grey)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -559,20 +739,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _accuracyLabel(int accuracy) {
     switch (accuracy) {
-      case 3:
-        return 'Tinggi (3)';
-      case 2:
-        return 'Sedang (2)';
+      case 0:
+        return 'Tidak dapat diandalkan (0)';
       case 1:
         return 'Rendah (1)';
+      case 2:
+        return 'Sedang (2)';
+      case 3:
+        return 'Tinggi (3)';
       default:
-        return 'Tidak andal (0)';
+        return 'Tidak diketahui ($accuracy)';
     }
-  }
-
-  String _formatDuration(Duration d) {
-    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
   }
 }
