@@ -162,4 +162,48 @@ void main() {
     mockService.close();
     await testDb.close();
   });
+
+  testWidgets(
+      'StationSurveyScreen beralih ke NMEA Eksternal dan menerapkan koordinat RTK',
+      (tester) async {
+    final mockService = MockStationMagService();
+    final testDb = AppDatabase(NativeDatabase.memory());
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StationSurveyScreen(
+          service: mockService,
+          database: testDb,
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // Verifikasi opsi NMEA Eksternal
+    expect(find.text('NMEA Eksternal'), findsOneWidget);
+    await tester.tap(find.text('NMEA Eksternal'));
+    await tester.pumpAndSettle();
+
+    // Muncul tombol Input NMEA
+    expect(find.text('Input NMEA'), findsOneWidget);
+    await tester.tap(find.text('Input NMEA'));
+    await tester.pumpAndSettle();
+
+    // Dialog input NMEA muncul
+    expect(find.text('Input Stream NMEA GNSS'), findsOneWidget);
+    expect(find.text('Terapkan Koordinat'), findsOneWidget);
+
+    // Tekan Terapkan Koordinat (menggunakan kalimat default GGA RTK)
+    await tester.tap(find.text('Terapkan Koordinat'));
+    await tester.pumpAndSettle();
+
+    // Verifikasi indikator status fix dan pembaruan field Latitude / Longitude
+    expect(find.textContaining('RTK Fix'), findsWidgets);
+    expect(find.text('-6.891333'), findsOneWidget);
+    expect(find.text('107.612000'), findsOneWidget);
+
+    mockService.close();
+    await testDb.close();
+  });
 }

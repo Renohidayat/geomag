@@ -5,6 +5,11 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Modul parser stream NMEA-0183 (`NmeaParserService` di Dart & `reference/nmea_parser.py` di Python) untuk integrasi GNSS eksternal Bluetooth berakurasi tinggi (DGPS/RTK) (#37)
+- Dukungan kalimat NMEA GGA ($xxGGA) dan RMC ($xxRMC) dengan ekstraksi koordinat derajat desimal WGS-84, elevasi, HDOP, satelit, dan kualitas fix (#37)
+- Validasi ketat checksum XOR NMEA dan penanganan otomatis format koordinat belahan bumi selatan/timur Indonesia (#37)
+- Selektor sumber posisi interaktif pada `StationSurveyScreen` (GNSS Internal HP vs NMEA Eksternal Bluetooth) dan dialog input stream NMEA (#37)
+- Unit test Dart dan Python serta widget test integrasi koordinat GNSS presisi tinggi (#37)
 - Layanan audit mutu survei otomatis `SurveyQualityReportService` yang mengevaluasi rasio stasiun, simpangan baku agregat, audit kalibrasi ellipsoid, ketercukupan base station harian, skor mutu 0–100, dan predikat mutu Grade A/B/C/D (#36)
 - Layar antarmuka laporan mutu survei `SurveyQualityReportScreen` dengan kartu skor KPI dinamis, visualisasi kinerja stasiun, temuan teknis otomatis, dan rekomendasi tindakan lapangan (#36)
 - Fitur ekspor laporan audit mutu ke format teks Markdown resmi dan salin ke clipboard (#36)
