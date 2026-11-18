@@ -5,6 +5,9 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Modul tie-line crossover levelling (`LevellingService` di Dart & `reference/levelling.py` di Python) dengan deteksi perpotongan 2D dan penyelesaian kuadrat terkecil teratur (regularized least squares) (#27)
+- Evaluasi metrik crossover error ($RMSE_{before}$ vs $RMSE_{after}$) dan koreksi bias per lintasan survei (#27)
+- Unit test komparasi Dart vs Python untuk levelling pada data grid sintetis (#27)
 - Laporan pengujian dan verifikasi Fase 2 (Stasiun, Base Station, Koreksi Harian, dan IGRF) di `docs/laporan_uji_fase_2.md`
 - Model medan utama bumi IGRF-14 (`IgrfService` di Dart & `reference/igrf.py` di Python) dengan ekspansi harmonik bola Schmidt semi-normalized derajat $n=13$ dan secular variation 2025–2030 (#21)
 - Tabel koefisien resmi IGRF-14 IAGA (`app/lib/services/igrf_coefficients.dart` & `reference/igrf14coeffs.txt`) (#21)
