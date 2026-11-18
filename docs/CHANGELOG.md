@@ -5,6 +5,11 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Model medan utama bumi IGRF-14 (`IgrfService` di Dart & `reference/igrf.py` di Python) dengan ekspansi harmonik bola Schmidt semi-normalized derajat $n=13$ dan secular variation 2025–2030 (#21)
+- Tabel koefisien resmi IGRF-14 IAGA (`app/lib/services/igrf_coefficients.dart` & `reference/igrf14coeffs.txt`) (#21)
+- Kalkulasi medan total $F_{\text{IGRF}}$, deklinasi, inklinasi, komponen horizontal, serta anomali medan total $\Delta T = B_{\text{obs}} - B_{\text{diurnal}} - F_{\text{IGRF}}$ (#21)
+- Integrasi penyimpanan anomali geomagnetik ke tabel `Anomalies` database Drift (#21)
+- Unit test komparasi Dart vs Python vs kalkulator resmi IAGA `ppigrf` pada berbagai koordinat benchmark dunia dan Indonesia dengan selisih $< 0.05\text{ nT}$ (#21)
 - Modul perhitungan koreksi variasi harian (`DiurnalCorrectionService` di Dart & `reference/diurnal_correction.py` di Python) dengan interpolasi linear biner O(log N) (#20)
 - Dukungan sinkronisasi waktu epoch, deteksi gap rekaman base station, clamping batas toleransi, dan estimasi baseline B0 (#20)
 - Unit test komparasi Dart vs Python untuk interpolasi linier, rumus variasi harian, batas waktu, dan pemrosesan batch stasiun (#20)
