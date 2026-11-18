@@ -88,7 +88,7 @@ class StationAggregationService {
         final magNt = sqrt(cal[0] * cal[0] + cal[1] * cal[1] + cal[2] * cal[2]) * 1000.0;
         totalFieldList.add(magNt);
       } else {
-        totalFieldList.add(s.totalFieldNt);
+        totalFieldList.add(s.calibratedTotalFieldNt);
       }
     }
 
