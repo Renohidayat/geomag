@@ -36,6 +36,7 @@ void main() {
     expect(find.text('B Obs'), findsWidgets);
     expect(find.text('Anomali ΔT'), findsWidgets);
     expect(find.text('|AS| 3D'), findsWidgets);
+    expect(find.text('RTP'), findsWidgets);
 
     // Canvas peta interaktif dan colorbar muncul
     expect(find.byType(InteractiveViewer), findsOneWidget);
@@ -63,6 +64,11 @@ void main() {
     await tester.tap(find.text('|AS| 3D'));
     await tester.pumpAndSettle();
     expect(find.textContaining('nT/m'), findsWidgets);
+
+    // Beralih ke RTP
+    await tester.tap(find.text('RTP'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('nT'), findsWidgets);
   });
 
   testWidgets(

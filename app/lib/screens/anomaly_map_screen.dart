@@ -5,6 +5,7 @@ import '../database/app_database.dart';
 import '../services/analytic_signal_service.dart';
 import '../services/gridding_service.dart';
 import '../services/qgis_export_service.dart';
+import '../services/rtp_service.dart';
 
 /// Jenis layer visualisasi pada peta anomali magnetik.
 enum MapLayerType {
@@ -16,6 +17,9 @@ enum MapLayerType {
 
   /// Magnitudo sinyal analitik 3D ($|AS| = \sqrt{Tx^2 + Ty^2 + Tz^2}$) dalam nT/m.
   analyticSignal,
+
+  /// Reduction to Pole (RTP) teratur untuk lintang rendah dalam nT.
+  rtp,
 }
 
 /// Data ringkasan stasiun untuk overlay pada peta.
@@ -55,6 +59,7 @@ class AnomalyMapScreen extends StatefulWidget {
   final GriddingService griddingService;
   final AnalyticSignalService analyticSignalService;
   final QgisExportService exportService;
+  final RtpService rtpService;
 
   const AnomalyMapScreen({
     super.key,
@@ -62,6 +67,7 @@ class AnomalyMapScreen extends StatefulWidget {
     this.griddingService = const GriddingService(),
     this.analyticSignalService = const AnalyticSignalService(),
     this.exportService = const QgisExportService(),
+    this.rtpService = const RtpService(),
   });
 
   @override
@@ -81,6 +87,7 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
   List<MapStationMarker> _stations = [];
   Grid2D? _totalFieldGrid;
   Grid2D? _deltaTGrid;
+  Grid2D? _rtpGrid;
   AnalyticSignalResult? _asResult;
 
   MapStationMarker? _highlightedStation;
@@ -243,12 +250,19 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
     );
 
     final asRes = widget.analyticSignalService.computeAnalyticSignal(dtGrid);
+    final rtpGrid = widget.rtpService.computeStabilizedRtp(
+      dtGrid,
+      inclinationDeg: -20.0,
+      declinationDeg: 1.0,
+      pseudoInclinationDeg: 20.0,
+    );
 
     setState(() {
       _stations = markers;
       _totalFieldGrid = tfGrid;
       _deltaTGrid = dtGrid;
       _asResult = asRes;
+      _rtpGrid = rtpGrid;
       _highlightedStation = markers.isNotEmpty ? markers.first : null;
       _isLoading = false;
     });
@@ -262,6 +276,8 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
         return _deltaTGrid;
       case MapLayerType.analyticSignal:
         return _asResult?.asMagnitude;
+      case MapLayerType.rtp:
+        return _rtpGrid;
     }
   }
 
@@ -269,6 +285,7 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
     switch (_selectedLayer) {
       case MapLayerType.totalField:
       case MapLayerType.deltaT:
+      case MapLayerType.rtp:
         return 'nT';
       case MapLayerType.analyticSignal:
         return 'nT/m';
@@ -420,6 +437,10 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
               ButtonSegment(
                 value: MapLayerType.analyticSignal,
                 label: Text('|AS| 3D', style: TextStyle(fontSize: 12)),
+              ),
+              ButtonSegment(
+                value: MapLayerType.rtp,
+                label: Text('RTP', style: TextStyle(fontSize: 12)),
               ),
             ],
             selected: {_selectedLayer},
@@ -645,6 +666,8 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
         return 'Delta_T';
       case MapLayerType.analyticSignal:
         return 'Analytic_Signal';
+      case MapLayerType.rtp:
+        return 'RTP_Stabilized';
     }
   }
 
