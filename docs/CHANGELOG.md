@@ -5,6 +5,10 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Layar survei rover `StationSurveyScreen` dengan pemilihan survei, koordinat GNSS, countdown timer diam stasiun, dan auto-increment nomor stasiun (#18)
+- `StationAggregationService` untuk menghitung rata-rata, simpangan baku, median medan total, serta protokol penolakan otomatis stasiun noisy (#18)
+- Integrasi penyimpanan stasiun, hasil ringkasan agregat, dan sampel mentah batch ke Drift SQLite (`Stations`, `StationResults`, `Samples`) (#18)
+- Unit test dan widget test komprehensif untuk evaluasi mutu stasiun rover (#18)
 - Laporan pengujian dan verifikasi Fase 1 (Noise dan Kalibrasi Ellipsoid) di `docs/laporan_uji_fase_1.md`
 - Layar panduan kalibrasi interaktif `CalibrationScreen` dengan visualisasi bola orientasi 3D dan indikator cakupan sektor real-time (#13)
 - `SphereCoverageTracker` untuk membagi ruang orientasi 3D ke dalam 18 sektor dan mendeteksi ketercakupan rotasi (#13)
