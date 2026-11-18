@@ -8,6 +8,7 @@ import '../models/magnetometer_sample.dart';
 import '../models/sensor_info.dart';
 import '../services/magnetometer_service.dart';
 import '../services/recording_session_service.dart';
+import 'noise_test_screen.dart';
 
 /// Layar utama: menampilkan data magnetometer real-time dan metrik instrumen.
 class HomeScreen extends StatefulWidget {
@@ -168,6 +169,23 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('GeoMag - Survei Magnetik'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.analytics_outlined),
+            tooltip: 'Uji Lantai Noise',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => NoiseTestScreen(
+                    service: _magnetometerService,
+                    database: _database,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
