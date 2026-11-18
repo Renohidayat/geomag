@@ -5,10 +5,15 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Diperbaiki
+- Perbaikan layout RenderFlex overflow 11 pixels pada pemilih sumber posisi di `StationSurveyScreen` dengan tata letak vertikal penuh (#49)
+- Penyesuaian agregasi sampel stasiun pada `StationAggregationService` agar menggunakan data terkoreksi bias hard-iron aktif (`calibratedTotalFieldNt`) saat profil kalibrasi tersimpan belum dipilih (#49)
 - Koreksi algoritma pelacak orientasi bola `SphereCoverageTracker` dan layar `CalibrationScreen` dengan auto-centering estimasi bias hard-iron OS / running mean, mencegah titik orientasi terperangkap dalam kerucut sempit akibat medan magnet speaker internal smartphone (#47)
 - Pembaruan tampilan beranda `HomeScreen` dengan menerapkan koreksi bias hard-iron (`calibratedTotalFieldNt` atau profil kalibrasi aktif dari database) pada meteran jarum analog dan grafik gelombang real-time sehingga di udara bebas nilai terbaca normal di zona hijau (~42.000–46.000 nT) (#47)
 
 ### Ditambahkan
+- Pilihan durasi perekaman cepat stasiun (5 detik, 10 detik, 30 detik) dengan default 5 detik di `StationSurveyScreen` agar survei lapangan tidak membuat tangan pegal dan meminimalkan goyangan HP (#49)
+- Redesain antarmuka hasil rekam stasiun ramah pemula: instruksi jelas "Tahan HP Diam", status santai "HP Tadi Agak Bergoyang" saat goyang, tombol hijau besar "Simpan Titik Stasiun", serta rincian teknis geofisika disembunyikan di menu lipat (#49)
+- Banner panduan pemula pada layar `AnomalyMapScreen` saat data stasiun masih sedikit (< 3 titik) lengkap dengan tombol instan "Tampilkan Peta Contoh Demo Simulasi" (#49)
 - Desain antarmuka baru yang ramah pengguna (user-friendly) untuk pemula dan praktisi lapangan tanpa mengurangi akurasi ilmiah (#45)
 - Widget meteran jarum analog (`AnalogGaugeWidget`) dinamis ala Ultimate EMF Detector dengan busur warna 240 derajat (Zona Normal Medan Bumi, Anomali Sedang, hingga Anomali Kuat Batuan/Logam), status badge responsif, dan indikator jarum halus (#45)
 - Widget grafik gelombang real-time dinamis (`LiveWaveformChart`) ala Phyphox dengan garis kisi (*gridlines*), area gradien, indikator LIVE, serta ringkasan metrik Min, Kini, dan Maksimum (#45)

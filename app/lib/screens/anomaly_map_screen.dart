@@ -333,6 +333,8 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
           : Column(
               children: [
                 _buildHeaderControls(theme),
+                if (_stations.length < 3)
+                  _buildEmptyStateBanner(theme),
                 Expanded(
                   child: Stack(
                     children: [
@@ -377,6 +379,64 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
                   _buildStationInfoCard(theme, _highlightedStation!),
               ],
             ),
+    );
+  }
+
+  Widget _buildEmptyStateBanner(ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.amber.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.amber.shade900, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Baru Ada ${_stations.length} Titik Stasiun',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.amber.shade900,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Peta 2D memerlukan minimal 3 sampai 5 titik stasiun untuk membentuk peta sebaran gradasi warna batuan/logam. '
+            'Ingin melihat contoh hasil petanya sekarang?',
+            style: TextStyle(fontSize: 12, color: Colors.black87, height: 1.3),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.auto_awesome, size: 16),
+              label: const Text(
+                'Tampilkan Peta Contoh Demo Simulasi',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber.shade800,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+              onPressed: () {
+                _generateDemoData();
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 

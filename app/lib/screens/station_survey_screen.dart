@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../database/app_database.dart';
 import '../models/magnetometer_sample.dart';
+import '../services/ellipsoid_calibration_service.dart';
 import '../services/magnetometer_service.dart';
 import '../services/nmea_parser_service.dart';
 import '../services/station_aggregation_service.dart';
@@ -25,9 +26,9 @@ class StationSurveyScreen extends StatefulWidget {
     this.database,
     this.aggregationService,
     this.nmeaParser,
-    this.recordDurationSeconds = 30, // Default 30 detik
+    this.recordDurationSeconds = 5, // Default 5 detik agar ramah awam
     this.maxStdDevNt = 1000.0,
-    this.minSamples = 100,
+    this.minSamples = 50,
   });
 
   @override
@@ -55,6 +56,10 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
   bool _useExternalGnss = false;
   NmeaPosition? _externalGnssPosition;
 
+  int _selectedDurationSeconds = 5;
+  bool _showTechnicalDetails = false;
+  EllipsoidCalibrationResult? _activeCalibration;
+
   bool _isRecording = false;
   int _remainingSeconds = 0;
   final List<MagnetometerSample> _stationSamples = [];
@@ -74,7 +79,32 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
           minSamples: widget.minSamples,
         );
 
+    _selectedDurationSeconds = widget.recordDurationSeconds;
     _initSurvey();
+    _loadActiveCalibration();
+  }
+
+  Future<void> _loadActiveCalibration() async {
+    try {
+      final profile = await _database.getLatestCalibrationProfile('default-device');
+      if (profile != null && mounted) {
+        final elements = profile.matrixA.split(',').map((s) => double.parse(s.trim())).toList();
+        setState(() {
+          _activeCalibration = EllipsoidCalibrationResult(
+            offsetMicroT: [
+              profile.hardIronBxMicroT,
+              profile.hardIronByMicroT,
+              profile.hardIronBzMicroT,
+            ],
+            matrixA: elements,
+            residualNt: profile.residualNt,
+            stdBeforeNt: 0.0,
+            stdAfterNt: 0.0,
+            inlierCount: 0,
+          );
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -150,7 +180,7 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
       _isSaved = false;
       _aggregationResult = null;
       _stationSamples.clear();
-      _remainingSeconds = widget.recordDurationSeconds;
+      _remainingSeconds = _selectedDurationSeconds;
     });
 
     _subscription?.cancel();
@@ -177,8 +207,14 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
     _subscription?.cancel();
     _subscription = null;
 
+    final thresholdMinSamples = widget.minSamples != 100
+        ? widget.minSamples
+        : (_selectedDurationSeconds <= 5 ? 50 : 100);
+
     final result = _aggregationService.aggregateStationSamples(
       samples: _stationSamples,
+      calibrationProfile: _activeCalibration,
+      customMinSamples: thresholdMinSamples,
     );
 
     setState(() {
@@ -414,32 +450,31 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                       ],
                     ),
                     const Divider(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Sumber Posisi:',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                        ),
-                        SegmentedButton<bool>(
-                          segments: const [
-                            ButtonSegment(
-                              value: false,
-                              label: Text('GPS HP', style: TextStyle(fontSize: 11)),
-                              icon: Icon(Icons.smartphone, size: 14),
-                            ),
-                            ButtonSegment(
-                              value: true,
-                              label: Text('NMEA Eksternal', style: TextStyle(fontSize: 11)),
-                              icon: Icon(Icons.bluetooth, size: 14),
-                            ),
-                          ],
-                          selected: {_useExternalGnss},
-                          onSelectionChanged: (val) {
-                            setState(() => _useExternalGnss = val.first);
-                          },
-                        ),
-                      ],
+                    const Text(
+                      'Sumber Posisi:',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment(
+                            value: false,
+                            label: Text('GPS HP Internal', style: TextStyle(fontSize: 11)),
+                            icon: Icon(Icons.smartphone, size: 14),
+                          ),
+                          ButtonSegment(
+                            value: true,
+                            label: Text('NMEA Eksternal', style: TextStyle(fontSize: 11)),
+                            icon: Icon(Icons.bluetooth, size: 14),
+                          ),
+                        ],
+                        selected: {_useExternalGnss},
+                        onSelectionChanged: (val) {
+                          setState(() => _useExternalGnss = val.first);
+                        },
+                      ),
                     ),
                     if (_useExternalGnss) ...[
                       const SizedBox(height: 8),
@@ -549,28 +584,75 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
 
             // Card Perekaman Diam Real-Time
             Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    Text(
-                      _isRecording
-                          ? 'Merekam Diam Stasiun... ($_remainingSeconds s)'
-                          : 'Protokol Diam Stasiun (${widget.recordDurationSeconds} Detik)',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: _isRecording ? Colors.indigo : Colors.black87,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _isRecording ? Icons.hourglass_top_rounded : Icons.pan_tool_alt_outlined,
+                          color: _isRecording ? Colors.indigo : Colors.teal.shade700,
+                          size: 22,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _isRecording
+                              ? 'Merekam... Tahan HP Diam! ($_remainingSeconds s)'
+                              : 'Pegang HP Diam & Tenang di Titik Ini',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: _isRecording ? Colors.indigo : Colors.black87,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     if (_isRecording) ...[
                       LinearProgressIndicator(
-                        value: (widget.recordDurationSeconds - _remainingSeconds) /
-                            widget.recordDurationSeconds,
+                        value: (_selectedDurationSeconds - _remainingSeconds) /
+                            _selectedDurationSeconds,
                         minHeight: 10,
-                        backgroundColor: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(5),
+                        backgroundColor: Colors.grey.shade200,
                         valueColor: const AlwaysStoppedAnimation<Color>(Colors.indigo),
+                      ),
+                      const SizedBox(height: 12),
+                    ] else ...[
+                      // Pilihan Durasi Pengukuran
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text('Waktu Uji:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          const SizedBox(width: 8),
+                          ChoiceChip(
+                            label: const Text('5 Detik (Cepat)', style: TextStyle(fontSize: 11)),
+                            selected: _selectedDurationSeconds == 5,
+                            onSelected: (sel) {
+                              if (sel) setState(() => _selectedDurationSeconds = 5);
+                            },
+                          ),
+                          const SizedBox(width: 6),
+                          ChoiceChip(
+                            label: const Text('10 Detik', style: TextStyle(fontSize: 11)),
+                            selected: _selectedDurationSeconds == 10,
+                            onSelected: (sel) {
+                              if (sel) setState(() => _selectedDurationSeconds = 10);
+                            },
+                          ),
+                          const SizedBox(width: 6),
+                          ChoiceChip(
+                            label: const Text('30 Detik', style: TextStyle(fontSize: 11)),
+                            selected: _selectedDurationSeconds == 30,
+                            onSelected: (sel) {
+                              if (sel) setState(() => _selectedDurationSeconds = 30);
+                            },
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -583,8 +665,8 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                           Icons.data_usage,
                         ),
                         _buildStatBox(
-                          'Durasi Uji',
-                          '${widget.recordDurationSeconds}s',
+                          'Target Waktu',
+                          '${_selectedDurationSeconds}s',
                           Icons.timer_outlined,
                         ),
                       ],
@@ -600,13 +682,15 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
               icon: Icon(_isRecording ? Icons.hourglass_top : Icons.play_arrow),
               label: Text(
                 _isRecording
-                    ? 'Sedang Merekam Diam Stasiun...'
-                    : 'Mulai Rekam Stasiun (${widget.recordDurationSeconds}s)',
+                    ? 'Sedang Merekam... Mohon Tahan Diam ($_remainingSeconds s)'
+                    : 'Mulai Rekam Titik Stasiun ($_selectedDurationSeconds Detik)',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
               ),
               style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: _isRecording ? Colors.grey : Colors.indigo,
                 foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
               onPressed: _isRecording ? null : _startStationRecording,
             ),
@@ -615,20 +699,13 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
             // Banner Hasil Evaluasi Mutu
             if (res != null) ...[
               Container(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: res.qualityFlag == 'ACCEPTED'
-                      ? Colors.green.shade50
-                      : (res.qualityFlag == 'FLAGGED'
-                          ? Colors.orange.shade50
-                          : Colors.red.shade50),
-                  borderRadius: BorderRadius.circular(10),
+                  color: res.isAccepted ? Colors.green.shade50 : Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: res.qualityFlag == 'ACCEPTED'
-                        ? Colors.green.shade400
-                        : (res.qualityFlag == 'FLAGGED'
-                            ? Colors.orange.shade400
-                            : Colors.red.shade400),
+                    color: res.isAccepted ? Colors.green.shade400 : Colors.red.shade300,
+                    width: 1.5,
                   ),
                 ),
                 child: Column(
@@ -637,54 +714,81 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                     Row(
                       children: [
                         Icon(
-                          res.qualityFlag == 'ACCEPTED'
-                              ? Icons.check_circle
-                              : (res.qualityFlag == 'FLAGGED'
-                                  ? Icons.warning_amber
-                                  : Icons.cancel),
-                          color: res.qualityFlag == 'ACCEPTED'
-                              ? Colors.green
-                              : (res.qualityFlag == 'FLAGGED'
-                                  ? Colors.orange
-                                  : Colors.red),
+                          res.isAccepted ? Icons.check_circle : Icons.warning_amber_rounded,
+                          color: res.isAccepted ? Colors.green.shade700 : Colors.red.shade700,
+                          size: 26,
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Status: ${res.qualityFlag}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                            color: res.qualityFlag == 'ACCEPTED'
-                                ? Colors.green.shade900
-                                : (res.qualityFlag == 'FLAGGED'
-                                    ? Colors.orange.shade900
-                                    : Colors.red.shade900),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            res.isAccepted
+                                ? '✓ Titik Stasiun Berhasil Direkam!'
+                                : '⚠️ HP Tadi Agak Bergoyang',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: res.isAccepted ? Colors.green.shade900 : Colors.red.shade900,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     Text(
-                      res.statusReason,
-                      style: const TextStyle(fontSize: 13),
+                      res.isAccepted
+                          ? 'Posisi HP tenang dan hasil pengukuran medan magnetik stabil.'
+                          : 'Sensor mendeteksi HP bergerak saat merekam. Mohon tahan HP tetap diam dan tenang selama $_selectedDurationSeconds detik ya.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: res.isAccepted ? Colors.green.shade900 : Colors.red.shade900,
+                        height: 1.4,
+                      ),
                     ),
-                    const Divider(height: 16),
-                    _buildResultRow(
-                      'Rata-rata Medan Total:',
-                      '${res.meanTotalFieldNt.toStringAsFixed(1)} nT',
+                    const Divider(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Kekuatan Medan Magnet:', style: TextStyle(fontWeight: FontWeight.w500)),
+                        Text(
+                          '${res.meanTotalFieldNt.toStringAsFixed(0)} nT',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                      ],
                     ),
-                    _buildResultRow(
-                      'Simpangan Baku (σ):',
-                      '${res.stdDevTotalFieldNt.toStringAsFixed(1)} nT',
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Data Terkumpul:', style: TextStyle(color: Colors.grey)),
+                        Text('${res.sampleCount} sampel ($_selectedDurationSeconds detik)'),
+                      ],
                     ),
-                    _buildResultRow(
-                      'Median Medan Total:',
-                      '${res.medianTotalFieldNt.toStringAsFixed(1)} nT',
+
+                    // Rincian Teknis Geofisika (Expandable / Toggle)
+                    const SizedBox(height: 10),
+                    InkWell(
+                      onTap: () {
+                        setState(() => _showTechnicalDetails = !_showTechnicalDetails);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              _showTechnicalDetails ? 'Sembunyikan Rincian Teknis ▲' : 'Lihat Rincian Teknis Geofisika ▼',
+                              style: TextStyle(fontSize: 12, color: Colors.indigo.shade700, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    _buildResultRow(
-                      'Jumlah Sampel Valid:',
-                      '${res.sampleCount} sampel',
-                    ),
+                    if (_showTechnicalDetails) ...[
+                      const Divider(height: 16),
+                      _buildResultRow('Simpangan Baku (σ):', '${res.stdDevTotalFieldNt.toStringAsFixed(1)} nT (Batas < 1000 nT)'),
+                      _buildResultRow('Median Medan Total:', '${res.medianTotalFieldNt.toStringAsFixed(1)} nT'),
+                      _buildResultRow('Status Asli:', '${res.qualityFlag} (${res.statusReason})'),
+                    ],
                   ],
                 ),
               ),
@@ -697,23 +801,29 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                   label: Text(
                     _isSaved
                         ? 'Tersimpan ✓ (Lanjut ke Stasiun Berikutnya)'
-                        : 'Simpan Stasiun ke Database',
+                        : 'Simpan Titik Stasiun #$_nextStationSequence ke Database',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                   ),
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                     backgroundColor: _isSaved ? Colors.grey : Colors.green.shade700,
                     foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: _isSaved ? null : _saveStationToDatabase,
                 )
               else
                 ElevatedButton.icon(
                   icon: const Icon(Icons.refresh),
-                  label: const Text('Ulangi Rekam Stasiun (Data Bising)'),
+                  label: const Text(
+                    'Ulangi Rekam Titik (Tahan HP Diam)',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    backgroundColor: Colors.red.shade700,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    backgroundColor: Colors.deepOrange.shade700,
                     foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: _startStationRecording,
                 ),

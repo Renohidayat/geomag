@@ -175,4 +175,53 @@ void main() {
     expect(find.text('CSV Anomali Terpadu (.csv)'), findsOneWidget);
     expect(find.text('Ekspor Semua Paket GIS (Lengkap)'), findsOneWidget);
   });
+
+  testWidgets(
+      'AnomalyMapScreen menampilkan banner ramah pemula jika stasiun kurang dari 3 titik',
+      (tester) async {
+    final now = DateTime.now();
+    await db.into(db.devices).insert(
+          DevicesCompanion.insert(
+            id: 'DEV_01',
+            model: 'Test Phone',
+            androidVersion: '14',
+            magnetometerChip: 'AK09918',
+          ),
+        );
+    await db.into(db.surveys).insert(
+          SurveysCompanion.insert(
+            id: 'SURV_SINGLE',
+            deviceId: 'DEV_01',
+            name: 'Survei 1 Titik',
+            date: now,
+            mode: 'rover',
+          ),
+        );
+    await db.into(db.stations).insert(
+          StationsCompanion.insert(
+            id: 'ST_01',
+            surveyId: 'SURV_SINGLE',
+            sequenceNumber: 1,
+            localX: const drift.Value(0.0),
+            localY: const drift.Value(0.0),
+          ),
+        );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AnomalyMapScreen(database: db),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Baru Ada 1 Titik Stasiun'), findsOneWidget);
+    expect(find.text('Tampilkan Peta Contoh Demo Simulasi'), findsOneWidget);
+
+    // Ketuk tombol tampilkan peta demo simulasi
+    await tester.tap(find.text('Tampilkan Peta Contoh Demo Simulasi'));
+    await tester.pumpAndSettle();
+
+    // Banner hilang karena sudah ada 16 stasiun demo
+    expect(find.text('Tampilkan Peta Contoh Demo Simulasi'), findsNothing);
+  });
 }

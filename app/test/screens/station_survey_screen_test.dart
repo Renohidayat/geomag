@@ -75,10 +75,10 @@ void main() {
     expect(find.text('Survei Stasiun Rover'), findsOneWidget);
     expect(find.text('Survei Lapangan Utama'), findsOneWidget);
     expect(find.text('Stasiun #1'), findsOneWidget);
-    expect(find.text('Mulai Rekam Stasiun (2s)'), findsOneWidget);
+    expect(find.text('Mulai Rekam Titik Stasiun (2 Detik)'), findsOneWidget);
 
     // Mulai rekam stasiun
-    await tester.tap(find.text('Mulai Rekam Stasiun (2s)'));
+    await tester.tap(find.text('Mulai Rekam Titik Stasiun (2 Detik)'));
     await tester.pump();
 
     // Pancarkan 15 sampel stabil (+- 50 nT)
@@ -90,12 +90,12 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
 
-    // Verifikasi hasil evaluasi mutu: ACCEPTED
-    expect(find.text('Status: ACCEPTED'), findsOneWidget);
-    expect(find.text('Simpan Stasiun ke Database'), findsOneWidget);
+    // Verifikasi hasil evaluasi mutu: Berhasil direkam
+    expect(find.text('✓ Titik Stasiun Berhasil Direkam!'), findsOneWidget);
+    expect(find.text('Simpan Titik Stasiun #1 ke Database'), findsOneWidget);
 
     // Simpan stasiun ke database
-    final saveButton = find.text('Simpan Stasiun ke Database');
+    final saveButton = find.text('Simpan Titik Stasiun #1 ke Database');
     await tester.ensureVisible(saveButton);
     await tester.tap(saveButton);
     await tester.pumpAndSettle();
@@ -143,7 +143,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Mulai rekam stasiun
-    await tester.tap(find.text('Mulai Rekam Stasiun (2s)'));
+    await tester.tap(find.text('Mulai Rekam Titik Stasiun (2 Detik)'));
     await tester.pump();
 
     // Pancarkan 15 sampel dengan variansi besar (+- 1000 nT)
@@ -154,10 +154,10 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
 
-    // Status harus REJECTED dan tombol Ulangi muncul
-    expect(find.text('Status: REJECTED'), findsOneWidget);
-    expect(find.text('Ulangi Rekam Stasiun (Data Bising)'), findsOneWidget);
-    expect(find.text('Simpan Stasiun ke Database'), findsNothing);
+    // Status harus bergoyang dan tombol Ulangi muncul
+    expect(find.text('⚠️ HP Tadi Agak Bergoyang'), findsOneWidget);
+    expect(find.text('Ulangi Rekam Titik (Tahan HP Diam)'), findsOneWidget);
+    expect(find.text('Simpan Titik Stasiun #1 ke Database'), findsNothing);
 
     mockService.close();
     await testDb.close();
