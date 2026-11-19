@@ -1136,7 +1136,10 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => AnomalyMapScreen(database: _database),
+                  builder: (_) => AnomalyMapScreen(
+                    database: _database,
+                    service: _magService,
+                  ),
                 ),
               );
             },

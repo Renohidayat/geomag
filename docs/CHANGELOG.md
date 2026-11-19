@@ -13,6 +13,13 @@ Semua perubahan penting dicatat di sini.
 - Pembaruan tampilan beranda `HomeScreen` dengan menerapkan koreksi bias hard-iron (`calibratedTotalFieldNt` atau profil kalibrasi aktif dari database) pada meteran jarum analog dan grafik gelombang real-time sehingga di udara bebas nilai terbaca normal di zona hijau (~42.000–46.000 nT) (#47)
 
 ### Ditambahkan
+- Kompas arah mata angin (Utara N) pada sudut peta 2D untuk orientasi fisik spasial pengguna di lapangan (#51)
+- Jalur koneksi rute berurutan (1➔2➔3...) dengan panah arah gerak dan badge nomor urut stasiun pada canvas peta (#51)
+- Monitor sensor HP real-time terpadu pada layar peta 2D yang memantau nilai fluks magnetik aktual saat membawa HP berjalan (#51)
+- Deteksi pencocokan kedekatan nilai sensor live dengan stasiun terdekat pada peta (#51)
+- FilterChips pengatur visibilitas tampilan peta: Jalur Rute, Nomor Titik, dan Sensor HP Live (#51)
+- Label ramah pengguna pada legenda gradasi warna colormap (Medan Rendah, Normal Alami, Tinggi Logam/Kabel) (#51)
+- Rekomendasi tindakan lapangan dan interpretasi bahasa manusia kontekstual pada kartu rincian titik stasiun (#51)
 - Pemilahan cerdas daftar survei di dropdown `AnomalyMapScreen`: otomatis memprioritaskan proyek utama (`Survei Lapangan Utama`) di urutan teratas dan menampilkan badge jumlah stasiun tiap survei (#49)
 - Modal dialog bantuan ramah awam "Panduan Membaca Peta Anomali" (`Icons.help_outline` di AppBar) lengkap dengan arti gradasi warna batuan (Merah/Hijau/Biru) dan alur langkah pemakaian 1-2-3-4 (#49)
 - Banner edukasi dinamis fungsi lapisan peta (Anomali ΔT, Analytic Signal |AS| 3D, RTP, B Obs) yang otomatis berganti sesuai pilihan layer (#49)
