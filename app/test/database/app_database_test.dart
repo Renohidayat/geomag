@@ -234,8 +234,101 @@ void main() {
       expect(anom.fIgrfNt, 45000.0);
     });
 
+    test('deleteStation dan deleteSurveyStations menghapus data sesuai relasi FK', () async {
+      await db.insertDevice(
+        const DevicesCompanion(
+          id: Value('dev-del'),
+          model: Value('Test Dev'),
+          androidVersion: Value('14'),
+          magnetometerChip: Value('AK09918'),
+        ),
+      );
+
+      await db.insertSurvey(
+        SurveysCompanion(
+          id: const Value('surv-del'),
+          deviceId: const Value('dev-del'),
+          name: const Value('Survei Hapus'),
+          date: Value(DateTime.now()),
+          mode: const Value('rover'),
+        ),
+      );
+
+      // Insert 2 stations
+      for (int i = 1; i <= 2; i++) {
+        final stId = 'st-del-$i';
+        await db.insertStation(
+          StationsCompanion(
+            id: Value(stId),
+            surveyId: const Value('surv-del'),
+            sequenceNumber: Value(i),
+          ),
+        );
+        await db.saveStationResult(
+          StationResultsCompanion(
+            id: Value('res-del-$i'),
+            stationId: Value(stId),
+            totalFieldMeanNt: const Value(45000.0),
+            totalFieldStdNt: const Value(5.0),
+            sampleCount: const Value(100),
+            isAccepted: const Value(true),
+          ),
+        );
+        await db.saveAnomaly(
+          AnomaliesCompanion(
+            id: Value('anom-del-$i'),
+            stationId: Value(stId),
+            deltaTNt: const Value(10.0),
+          ),
+        );
+      }
+
+      var stations = await db.getStationsForSurvey('surv-del');
+      expect(stations.length, 2);
+
+      // Test deleteStation tunggal
+      await db.deleteStation('st-del-1');
+      stations = await db.getStationsForSurvey('surv-del');
+      expect(stations.length, 1);
+      expect(stations.first.id, 'st-del-2');
+
+      // Test deleteSurveyStations
+      await db.deleteSurveyStations('surv-del');
+      stations = await db.getStationsForSurvey('surv-del');
+      expect(stations, isEmpty);
+    });
+
+    test('factoryResetDatabase membersihkan seluruh tabel', () async {
+      await db.insertDevice(
+        const DevicesCompanion(
+          id: Value('dev-reset'),
+          model: Value('Reset Dev'),
+          androidVersion: Value('14'),
+          magnetometerChip: Value('AK09918'),
+        ),
+      );
+      await db.insertSurvey(
+        SurveysCompanion(
+          id: const Value('surv-reset'),
+          deviceId: const Value('dev-reset'),
+          name: const Value('Survei Reset'),
+          date: Value(DateTime.now()),
+          mode: const Value('rover'),
+        ),
+      );
+
+      var stats = await db.getDatabaseStats();
+      expect(stats.devices, 1);
+      expect(stats.surveys, 1);
+
+      await db.factoryResetDatabase();
+      stats = await db.getDatabaseStats();
+      expect(stats.devices, 0);
+      expect(stats.surveys, 0);
+      expect(stats.stations, 0);
+    });
+
     test('Foreign key enforcement mencegah orphan data', () async {
-      // Mencoba insert Station dengan surveyId tidak ada harus gagal
       expect(
         () async => await db.insertStation(
           const StationsCompanion(

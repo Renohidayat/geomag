@@ -123,4 +123,54 @@ class AppDatabase extends _$AppDatabase {
   Future<Anomaly?> getAnomaly(String stationId) =>
       (select(anomalies)..where((a) => a.stationId.equals(stationId)))
           .getSingleOrNull();
+
+  // Penghapusan data stasiun dan reset survei (mengikuti urutan integritas foreign key)
+  Future<void> deleteStation(String stationId) async {
+    await transaction(() async {
+      await (delete(anomalies)..where((tbl) => tbl.stationId.equals(stationId))).go();
+      await (delete(stationResults)..where((tbl) => tbl.stationId.equals(stationId))).go();
+      await (delete(samples)..where((tbl) => tbl.stationId.equals(stationId))).go();
+      await (delete(stations)..where((tbl) => tbl.id.equals(stationId))).go();
+    });
+  }
+
+  Future<void> deleteSurveyStations(String surveyId) async {
+    await transaction(() async {
+      final stList = await (select(stations)..where((tbl) => tbl.surveyId.equals(surveyId))).get();
+      final stIds = stList.map((s) => s.id).toList();
+      if (stIds.isNotEmpty) {
+        await (delete(anomalies)..where((tbl) => tbl.stationId.isIn(stIds))).go();
+        await (delete(stationResults)..where((tbl) => tbl.stationId.isIn(stIds))).go();
+        await (delete(samples)..where((tbl) => tbl.stationId.isIn(stIds))).go();
+        await (delete(stations)..where((tbl) => tbl.surveyId.equals(surveyId))).go();
+      }
+    });
+  }
+
+  Future<void> factoryResetDatabase() async {
+    await transaction(() async {
+      await delete(anomalies).go();
+      await delete(stationResults).go();
+      await delete(samples).go();
+      await delete(stations).go();
+      await delete(surveys).go();
+      await delete(calibrationProfiles).go();
+      await delete(devices).go();
+    });
+  }
+
+  Future<({int devices, int surveys, int stations, int samples, int calibrations})> getDatabaseStats() async {
+    final devCount = await select(devices).get().then((l) => l.length);
+    final survCount = await select(surveys).get().then((l) => l.length);
+    final stCount = await select(stations).get().then((l) => l.length);
+    final smpCount = await select(samples).get().then((l) => l.length);
+    final calCount = await select(calibrationProfiles).get().then((l) => l.length);
+    return (
+      devices: devCount,
+      surveys: survCount,
+      stations: stCount,
+      samples: smpCount,
+      calibrations: calCount,
+    );
+  }
 }

@@ -17,6 +17,7 @@ import 'calibration_screen.dart';
 import 'noise_test_screen.dart';
 import 'station_survey_screen.dart';
 import 'survey_quality_report_screen.dart';
+import 'settings_screen.dart';
 
 /// Layar utama: menampilkan data magnetometer real-time dan metrik instrumen
 /// dengan antarmuka ramah pengguna (meteran jarum analog & grafik gelombang).
@@ -313,6 +314,21 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Pengaturan & Reset Data',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SettingsScreen(
+                    database: _database,
+                    service: _magnetometerService,
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
       body: SingleChildScrollView(
@@ -543,6 +559,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 builder: (context) => BaseStationScreen(
                   service: _magnetometerService,
                   database: _database,
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+
+        // Menu 7: Pengaturan Aplikasi & Manajemen Data
+        _buildNavCard(
+          theme: theme,
+          title: 'Pengaturan & Manajemen Data',
+          subtitle: 'Ubah preferensi satuan, ambang deteksi, dan reset data pabrik',
+          icon: Icons.settings,
+          color: Colors.blueGrey,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => SettingsScreen(
+                  database: _database,
+                  service: _magnetometerService,
                 ),
               ),
             );

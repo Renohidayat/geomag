@@ -19,6 +19,11 @@ Semua perubahan penting dicatat di sini.
 - Pembaruan tampilan beranda `HomeScreen` dengan menerapkan koreksi bias hard-iron (`calibratedTotalFieldNt` atau profil kalibrasi aktif dari database) pada meteran jarum analog dan grafik gelombang real-time sehingga di udara bebas nilai terbaca normal di zona hijau (~42.000–46.000 nT) (#47)
 
 ### Ditambahkan
+- Layar Pengaturan & Preferensi baru (`SettingsScreen`) dengan opsi satuan utama (µT vs nT), slider kustomisasi ambang batas deteksi anomali, ringkasan kuota statistik database lokal, info spesifikasi chip sensor, dan tombol Reset Pabrik Database (#55)
+- Fitur reset survei instan (kosongkan semua titik stasiun) dengan dialog konfirmasi pada `StationSurveyScreen` dan `AnomalyMapScreen` agar pengguna dapat mengulang survei tanpa harus menghapus data aplikasi dari pengaturan HP (#55)
+- Fitur pembatalan titik terakhir (Undo) pada `StationSurveyScreen` untuk menghapus stasiun yang keliru direkam (#55)
+- Mode input posisi cepat "Grid Ruangan (Meter)" pada `StationSurveyScreen` lengkap dengan preset tombol sudut (Pojok Kiri Bawah, Kanan Bawah, Kanan Atas, Kiri Atas, Tengah) dan auto-advancing koordinat lokal agar survei ruangan tidak menumpuk di koordinat GPS yang sama (#55)
+- Integrasi tombol menu Pengaturan pada AppBar dan kartu navigasi dashboard di `HomeScreen` (#55)
 - Kompas arah mata angin (Utara N) pada sudut peta 2D untuk orientasi fisik spasial pengguna di lapangan (#51)
 - Jalur koneksi rute berurutan (1➔2➔3...) dengan panah arah gerak dan badge nomor urut stasiun pada canvas peta (#51)
 - Monitor sensor HP real-time terpadu pada layar peta 2D yang memantau nilai fluks magnetik aktual saat membawa HP berjalan (#51)
