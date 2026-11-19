@@ -293,6 +293,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 MaterialPageRoute(
                   builder: (context) => AnomalyMapScreen(
                     database: _database,
+                    service: _magnetometerService,
                   ),
                 ),
               );
@@ -436,7 +437,12 @@ class _HomeScreenState extends State<HomeScreen> {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => AnomalyMapScreen(database: _database)),
+              MaterialPageRoute(
+                builder: (context) => AnomalyMapScreen(
+                  database: _database,
+                  service: _magnetometerService,
+                ),
+              ),
             );
           },
         ),

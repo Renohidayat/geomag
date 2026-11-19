@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
 import '../database/app_database.dart';
+import '../models/magnetometer_sample.dart';
 import '../services/analytic_signal_service.dart';
 import '../services/gridding_service.dart';
+import '../services/magnetometer_service.dart';
 import '../services/qgis_export_service.dart';
 import '../services/rtp_service.dart';
 
@@ -56,6 +59,7 @@ class MapStationMarker {
 /// Layar visualisasi peta anomali 2D interaktif dengan grid colormap dan overlay stasiun.
 class AnomalyMapScreen extends StatefulWidget {
   final AppDatabase database;
+  final MagnetometerService? service;
   final GriddingService griddingService;
   final AnalyticSignalService analyticSignalService;
   final QgisExportService exportService;
@@ -64,6 +68,7 @@ class AnomalyMapScreen extends StatefulWidget {
   const AnomalyMapScreen({
     super.key,
     required this.database,
+    this.service,
     this.griddingService = const GriddingService(),
     this.analyticSignalService = const AnalyticSignalService(),
     this.exportService = const QgisExportService(),
@@ -93,14 +98,42 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
 
   MapStationMarker? _highlightedStation;
 
+  // Fitur ramah pengguna: Orientasi jalur, nomor titik, dan live sensor monitor
+  StreamSubscription<MagnetometerSample>? _sensorSubscription;
+  double? _liveTotalFieldMicroT;
+  double? _liveTotalFieldNt;
+  bool _showPath = true;
+  bool _showStationNumbers = true;
+  bool _showLiveMonitor = true;
+
   @override
   void initState() {
     super.initState();
+    _initLiveSensor();
     _loadSurveys();
+  }
+
+  void _initLiveSensor() {
+    final s = widget.service;
+    if (s != null) {
+      try {
+        _sensorSubscription = s.sampleStream.listen(
+          (sample) {
+            if (!mounted) return;
+            setState(() {
+              _liveTotalFieldMicroT = sample.calibratedTotalFieldMicroT;
+              _liveTotalFieldNt = sample.calibratedTotalFieldNt;
+            });
+          },
+          onError: (_) {},
+        );
+      } catch (_) {}
+    }
   }
 
   @override
   void dispose() {
+    _sensorSubscription?.cancel();
     _transformController.dispose();
     super.dispose();
   }
@@ -374,20 +407,58 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
                               ? SizedBox(
                                   width: 360,
                                   height: 360,
-                                  child: CustomPaint(
-                                    painter: GridMapPainter(
-                                      grid: activeGrid,
-                                      stations: _stations,
-                                      highlightedStation: _highlightedStation,
-                                      onStationTapped: (st) {
-                                        setState(() => _highlightedStation = st);
-                                      },
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTapUp: (details) {
+                                      final localPos = details.localPosition;
+                                      final xSpan = max(1e-6, activeGrid.xMax - activeGrid.xMin);
+                                      final ySpan = max(1e-6, activeGrid.yMax - activeGrid.yMin);
+
+                                      MapStationMarker? closest;
+                                      double minDistance = double.infinity;
+
+                                      for (final st in _stations) {
+                                        final normX = (st.x - activeGrid.xMin) / xSpan;
+                                        final normY = (st.y - activeGrid.yMin) / ySpan;
+                                        final posX = (normX * 360.0).clamp(0.0, 360.0);
+                                        final posY = (360.0 - normY * 360.0).clamp(0.0, 360.0);
+                                        final dist = (Offset(posX, posY) - localPos).distance;
+                                        if (dist < minDistance) {
+                                          minDistance = dist;
+                                          closest = st;
+                                        }
+                                      }
+
+                                      // Toleransi ketukan 35px
+                                      if (minDistance <= 35.0 && closest != null) {
+                                        setState(() => _highlightedStation = closest);
+                                      }
+                                    },
+                                    child: CustomPaint(
+                                      painter: GridMapPainter(
+                                        grid: activeGrid,
+                                        stations: _stations,
+                                        highlightedStation: _highlightedStation,
+                                        showPath: _showPath,
+                                        showStationNumbers: _showStationNumbers,
+                                        onStationTapped: (st) {
+                                          setState(() => _highlightedStation = st);
+                                        },
+                                      ),
                                     ),
                                   ),
                                 )
                               : const Text('Data grid belum tersedia'),
                         ),
                       ),
+
+                      // Kompas Arah di Sudut Kanan Atas
+                      if (activeGrid != null)
+                        Positioned(
+                          top: 14,
+                          right: 14,
+                          child: _buildCompassWidget(theme),
+                        ),
 
                       // Colorbar Legenda di Sudut Bawah
                       if (activeGrid != null)
@@ -400,7 +471,9 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
                     ],
                   ),
                 ),
-                if (_highlightedStation != null)
+                if (activeGrid != null && _stations.length >= 3 && _showLiveMonitor)
+                  _buildLiveSensorMonitor(theme),
+                if (activeGrid != null && _stations.length >= 3 && _highlightedStation != null)
                   _buildStationInfoCard(theme, _highlightedStation!),
               ],
             ),
@@ -567,6 +640,239 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
           ),
           const SizedBox(height: 8),
           _buildLayerDescriptionBanner(theme),
+          const SizedBox(height: 6),
+          _buildMapOptionChips(theme),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMapOptionChips(ThemeData theme) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          FilterChip(
+            avatar: const Icon(Icons.route, size: 16),
+            label: const Text('Jalur Rute (1➔2➔3)', style: TextStyle(fontSize: 11)),
+            selected: _showPath,
+            onSelected: (val) => setState(() => _showPath = val),
+          ),
+          const SizedBox(width: 6),
+          FilterChip(
+            avatar: const Icon(Icons.pin_outlined, size: 16),
+            label: const Text('Nomor Titik', style: TextStyle(fontSize: 11)),
+            selected: _showStationNumbers,
+            onSelected: (val) => setState(() => _showStationNumbers = val),
+          ),
+          const SizedBox(width: 6),
+          FilterChip(
+            avatar: const Icon(Icons.sensors, size: 16),
+            label: const Text('Sensor HP Live', style: TextStyle(fontSize: 11)),
+            selected: _showLiveMonitor,
+            onSelected: (val) => setState(() => _showLiveMonitor = val),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompassWidget(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: (isDark ? const Color(0xFF1E242B) : Colors.white).withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDark ? Colors.white24 : Colors.black12),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 22,
+            height: 22,
+            child: CustomPaint(
+              painter: _CompassNeedlePainter(),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Arah Utara (N)',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              Text(
+                'Sumbu Atas (+Y)',
+                style: TextStyle(
+                  fontSize: 8,
+                  color: isDark ? Colors.white60 : Colors.black54,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLiveSensorMonitor(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final liveMicroT = _liveTotalFieldMicroT;
+    final liveNt = _liveTotalFieldNt;
+
+    Color badgeColor;
+    String statusTitle;
+    String statusDesc;
+    IconData statusIcon;
+
+    if (liveMicroT == null) {
+      badgeColor = Colors.grey;
+      statusTitle = 'Menghubungkan ke Sensor...';
+      statusDesc = 'Bawa HP berjalan mengelilingi ruangan/area untuk memantau variasi medan.';
+      statusIcon = Icons.sensors_off;
+    } else if (liveMicroT > 58.0) {
+      badgeColor = isDark ? Colors.redAccent : Colors.red.shade700;
+      statusTitle = 'Anomali Tinggi (Terdeteksi Besi / Kabel Listrik)';
+      statusDesc = 'Medan magnet melonjak tinggi di atas kondisi normal latar alami.';
+      statusIcon = Icons.warning_amber_rounded;
+    } else if (liveMicroT > 48.0) {
+      badgeColor = isDark ? Colors.amberAccent : Colors.amber.shade800;
+      statusTitle = 'Anomali Sedang (Indikasi Logam Ringan)';
+      statusDesc = 'Medan sedikit di atas rata-rata lingkungan alami.';
+      statusIcon = Icons.info_outline;
+    } else {
+      badgeColor = isDark ? Colors.greenAccent : Colors.green.shade700;
+      statusTitle = 'Medan Normal (Latar Alami)';
+      statusDesc = 'Kondisi stabil tanpa gangguan logam berat atau kabel arus kuat.';
+      statusIcon = Icons.check_circle_outline;
+    }
+
+    // Cari stasiun terdekat yang nilainya mirip dengan bacaan live saat ini
+    MapStationMarker? matchedStation;
+    if (liveNt != null && _stations.isNotEmpty) {
+      for (final st in _stations) {
+        if ((st.totalFieldNt - liveNt).abs() < 1500.0) {
+          matchedStation = st;
+          break;
+        }
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E242B) : Colors.blueGrey.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark ? Colors.blueGrey.shade700 : Colors.blueGrey.shade200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.sensors, size: 16, color: theme.colorScheme.primary),
+              const SizedBox(width: 6),
+              Text(
+                'Monitor Sensor HP Real-Time',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              const Spacer(),
+              if (liveMicroT != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: badgeColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: badgeColor.withValues(alpha: 0.5)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(statusIcon, size: 12, color: badgeColor),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${liveMicroT.toStringAsFixed(1)} µT (${liveNt?.toStringAsFixed(0)} nT)',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: badgeColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Text(
+                statusTitle,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: badgeColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  statusDesc,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (matchedStation != null) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.near_me, size: 12, color: Colors.amber),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Nilai sensor saat ini mendekati Titik Stasiun #${matchedStation.sequenceNumber}',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.amber,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -719,6 +1025,15 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
               _buildGuideStepItem('2', 'Pilih Jenis Lapisan', 'Gunakan "Anomali ΔT" untuk melihat sebaran anomali batuan/logam secara optimal.', theme),
               _buildGuideStepItem('3', 'Ketuk Titik Stasiun', 'Sentuh lingkaran titik pada peta untuk melihat koordinat X, Y dan nilai medan magnet stasiun tersebut.', theme),
               _buildGuideStepItem('4', 'Ekspor ke QGIS / GIS', 'Tekan tombol download di pojok kanan atas untuk mengekspor data ke format peta profesional (.asc, .geojson, .csv).', theme),
+              const SizedBox(height: 16),
+              Text(
+                '3. Orientasi & Navigasi Lapangan',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: theme.colorScheme.onSurface),
+              ),
+              const SizedBox(height: 8),
+              _buildGuideStepItem('🧭', 'Kompas Arah (N)', 'Jarum di pojok kanan atas menunjukkan arah Utara (N) sesuai orientasi sumbu tegak peta (+Y).', theme),
+              _buildGuideStepItem('〰️', 'Jalur Urutan Survei', 'Garis rute menghubungkan stasiun 1➔2➔3 sesuai urutan langkah Anda di lapangan.', theme),
+              _buildGuideStepItem('📡', 'Monitor Sensor Live', 'Bilah sensor membaca magnetometer smartphone secara real-time saat Anda berjalan.', theme),
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
@@ -839,6 +1154,15 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 5),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('🔵 Medan Rendah', style: TextStyle(fontSize: 10, color: Colors.blue.shade300, fontWeight: FontWeight.bold)),
+                Text('🟢 Normal (Alami)', style: TextStyle(fontSize: 10, color: Colors.green.shade400, fontWeight: FontWeight.bold)),
+                Text('🔴 Tinggi (Logam/Kabel)', style: TextStyle(fontSize: 10, color: Colors.red.shade300, fontWeight: FontWeight.bold)),
+              ],
+            ),
           ],
         ),
       ),
@@ -849,15 +1173,19 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     String interpText;
+    String interpAdvice;
     Color interpColor;
     if ((st.deltaTNt ?? 0) > 100) {
-      interpText = 'Anomali Positif (Potensi Mineral Batuan / Logam)';
+      interpText = 'Anomali Tinggi (Indikasi Objek Besi / Kabel Listrik)';
+      interpAdvice = 'Terdeteksi medan magnetik kuat buatan dari logam atau arus kabel.';
       interpColor = isDark ? Colors.orangeAccent : Colors.orange.shade800;
     } else if ((st.deltaTNt ?? 0) < -100) {
-      interpText = 'Anomali Negatif (Lapisan Rendah / Rongga)';
+      interpText = 'Anomali Rendah (Sedimen / Rongga / Bawah Rata-Rata)';
+      interpAdvice = 'Nilai medan di titik ini lebih rendah dibandingkan medan acuan sekitar.';
       interpColor = isDark ? Colors.lightBlueAccent : Colors.blue.shade800;
     } else {
-      interpText = 'Netral (Kondisi Rata-Rata Lingkungan Sekitar)';
+      interpText = 'Medan Normal (Latar Alami / Bebas Gangguan)';
+      interpAdvice = 'Kondisi stabil mewakili nilai medan alami lingkungan sekitar.';
       interpColor = isDark ? Colors.greenAccent : Colors.green.shade800;
     }
 
@@ -884,22 +1212,34 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
                     ),
                   ],
                 ),
-                Chip(
-                  label: Text(
-                    st.qualityFlag,
-                    style: TextStyle(
-                      color: st.isAccepted
-                          ? (isDark ? Colors.greenAccent : Colors.green.shade900)
-                          : (isDark ? Colors.redAccent : Colors.red.shade900),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 11,
+                Row(
+                  children: [
+                    Chip(
+                      label: Text(
+                        st.qualityFlag,
+                        style: TextStyle(
+                          color: st.isAccepted
+                              ? (isDark ? Colors.greenAccent : Colors.green.shade900)
+                              : (isDark ? Colors.redAccent : Colors.red.shade900),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                      backgroundColor: st.isAccepted
+                          ? (isDark ? const Color(0xFF142E18) : Colors.green.shade100)
+                          : (isDark ? const Color(0xFF321414) : Colors.red.shade100),
+                      padding: EdgeInsets.zero,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                  ),
-                  backgroundColor: st.isAccepted
-                      ? (isDark ? const Color(0xFF142E18) : Colors.green.shade100)
-                      : (isDark ? const Color(0xFF321414) : Colors.red.shade100),
-                  padding: EdgeInsets.zero,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    const SizedBox(width: 6),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 16),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      tooltip: 'Tutup Rincian',
+                      onPressed: () => setState(() => _highlightedStation = null),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -907,6 +1247,11 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
             Text(
               '• $interpText',
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: interpColor),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              interpAdvice,
+              style: TextStyle(fontSize: 10, color: isDark ? Colors.white70 : Colors.black87),
             ),
             const Divider(height: 12),
             Row(
@@ -1150,12 +1495,16 @@ class GridMapPainter extends CustomPainter {
   final List<MapStationMarker> stations;
   final MapStationMarker? highlightedStation;
   final ValueChanged<MapStationMarker>? onStationTapped;
+  final bool showPath;
+  final bool showStationNumbers;
 
   const GridMapPainter({
     required this.grid,
     required this.stations,
     this.highlightedStation,
     this.onStationTapped,
+    this.showPath = true,
+    this.showStationNumbers = true,
   });
 
   /// Mengonversi nilai terdistribusi [0, 1] menjadi palet warna Turbo / Geophysics.
@@ -1188,6 +1537,34 @@ class GridMapPainter extends CustomPainter {
 
     final tSub = (clamped - stops[i]) / (stops[i + 1] - stops[i]);
     return Color.lerp(colors[i], colors[i + 1], tSub)!;
+  }
+
+  void _drawSegmentArrow(Canvas canvas, Offset p1, Offset p2) {
+    final dist = (p2 - p1).distance;
+    if (dist < 28.0) return;
+    final mid = (p1 + p2) / 2;
+    final angle = atan2(p2.dy - p1.dy, p2.dx - p1.dx);
+    const arrowSize = 6.0;
+
+    final path = Path()
+      ..moveTo(
+        mid.dx + arrowSize * cos(angle),
+        mid.dy + arrowSize * sin(angle),
+      )
+      ..lineTo(
+        mid.dx + arrowSize * cos(angle + 2.5),
+        mid.dy + arrowSize * sin(angle + 2.5),
+      )
+      ..lineTo(
+        mid.dx + arrowSize * cos(angle - 2.5),
+        mid.dy + arrowSize * sin(angle - 2.5),
+      )
+      ..close();
+
+    final arrowPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.95)
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(path, arrowPaint);
   }
 
   @override
@@ -1226,10 +1603,57 @@ class GridMapPainter extends CustomPainter {
       ..strokeWidth = 1.5;
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), borderPaint);
 
-    // 3. Render Titik Stasiun
     final xSpan = max(1e-6, grid.xMax - grid.xMin);
     final ySpan = max(1e-6, grid.yMax - grid.yMin);
 
+    // 3. Render Jalur Urutan Survei (Rute Pergerakan 1➔2➔3...) jika aktif
+    if (showPath && stations.length >= 2) {
+      final sorted = List<MapStationMarker>.from(stations)
+        ..sort((a, b) => a.sequenceNumber.compareTo(b.sequenceNumber));
+
+      final pathShadowPaint = Paint()
+        ..color = Colors.black45
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.5;
+
+      final pathLinePaint = Paint()
+        ..color = Colors.white.withValues(alpha: 0.85)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+
+      final path = Path();
+      for (int i = 0; i < sorted.length; i++) {
+        final st = sorted[i];
+        final normX = (st.x - grid.xMin) / xSpan;
+        final normY = (st.y - grid.yMin) / ySpan;
+        final px = (normX * size.width).clamp(0.0, size.width);
+        final py = (size.height - normY * size.height).clamp(0.0, size.height);
+        if (i == 0) {
+          path.moveTo(px, py);
+        } else {
+          path.lineTo(px, py);
+        }
+      }
+      canvas.drawPath(path, pathShadowPaint);
+      canvas.drawPath(path, pathLinePaint);
+
+      // Gambar panah arah gerak kecil di tengah setiap segmen
+      for (int i = 0; i < sorted.length - 1; i++) {
+        final st1 = sorted[i];
+        final st2 = sorted[i + 1];
+        final p1 = Offset(
+          ((st1.x - grid.xMin) / xSpan * size.width).clamp(0.0, size.width),
+          (size.height - (st1.y - grid.yMin) / ySpan * size.height).clamp(0.0, size.height),
+        );
+        final p2 = Offset(
+          ((st2.x - grid.xMin) / xSpan * size.width).clamp(0.0, size.width),
+          (size.height - (st2.y - grid.yMin) / ySpan * size.height).clamp(0.0, size.height),
+        );
+        _drawSegmentArrow(canvas, p1, p2);
+      }
+    }
+
+    // 4. Render Titik Stasiun Berangka
     final dotPaint = Paint()..style = PaintingStyle.fill;
     final strokePaint = Paint()
       ..style = PaintingStyle.stroke
@@ -1250,14 +1674,35 @@ class GridMapPainter extends CustomPainter {
       if (isHigh) {
         // Halo ring untuk stasiun terpilih
         final haloPaint = Paint()
-          ..color = Colors.yellowAccent
+          ..color = Colors.amberAccent
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 3.0;
-        canvas.drawCircle(Offset(posX, posY), 9.0, haloPaint);
+          ..strokeWidth = 3.5;
+        canvas.drawCircle(Offset(posX, posY), showStationNumbers ? 14.0 : 9.0, haloPaint);
       }
 
-      canvas.drawCircle(Offset(posX, posY), 5.0, dotPaint);
-      canvas.drawCircle(Offset(posX, posY), 5.0, strokePaint);
+      final radius = showStationNumbers ? 9.5 : 5.0;
+      canvas.drawCircle(Offset(posX, posY), radius, dotPaint);
+      canvas.drawCircle(Offset(posX, posY), radius, strokePaint);
+
+      if (showStationNumbers) {
+        final textSpan = TextSpan(
+          text: '${st.sequenceNumber}',
+          style: TextStyle(
+            color: st.isAccepted ? Colors.black87 : Colors.white,
+            fontSize: 9.5,
+            fontWeight: FontWeight.bold,
+          ),
+        );
+        final tp = TextPainter(
+          text: textSpan,
+          textDirection: TextDirection.ltr,
+          textAlign: TextAlign.center,
+        )..layout();
+        tp.paint(
+          canvas,
+          Offset(posX - tp.width / 2, posY - tp.height / 2),
+        );
+      }
     }
   }
 
@@ -1265,6 +1710,60 @@ class GridMapPainter extends CustomPainter {
   bool shouldRepaint(covariant GridMapPainter oldDelegate) {
     return oldDelegate.grid != grid ||
         oldDelegate.stations != stations ||
-        oldDelegate.highlightedStation != highlightedStation;
+        oldDelegate.highlightedStation != highlightedStation ||
+        oldDelegate.showPath != showPath ||
+        oldDelegate.showStationNumbers != showStationNumbers;
   }
+}
+
+/// CustomPainter untuk merender jarum kompas arah Utara (N) dan Selatan (S).
+class _CompassNeedlePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final radius = min(cx, cy);
+
+    final dialPaint = Paint()
+      ..color = Colors.black87
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(cx, cy), radius, dialPaint);
+
+    final borderPaint = Paint()
+      ..color = Colors.white38
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    canvas.drawCircle(Offset(cx, cy), radius, borderPaint);
+
+    // Jarum Merah (Utara / N) ke Atas
+    final northPaint = Paint()
+      ..color = Colors.redAccent
+      ..style = PaintingStyle.fill;
+    final northPath = Path()
+      ..moveTo(cx, cy - radius * 0.8)
+      ..lineTo(cx - radius * 0.35, cy)
+      ..lineTo(cx + radius * 0.35, cy)
+      ..close();
+    canvas.drawPath(northPath, northPaint);
+
+    // Jarum Putih (Selatan / S) ke Bawah
+    final southPaint = Paint()
+      ..color = Colors.white70
+      ..style = PaintingStyle.fill;
+    final southPath = Path()
+      ..moveTo(cx, cy + radius * 0.8)
+      ..lineTo(cx - radius * 0.35, cy)
+      ..lineTo(cx + radius * 0.35, cy)
+      ..close();
+    canvas.drawPath(southPath, southPaint);
+
+    // Titik poros tengah
+    final pivotPaint = Paint()
+      ..color = Colors.amberAccent
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(cx, cy), 2.0, pivotPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
