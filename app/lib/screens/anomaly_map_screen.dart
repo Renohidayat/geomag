@@ -345,6 +345,55 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
     }
   }
 
+  Future<void> _confirmResetSurvey() async {
+    final surveyId = _selectedSurveyId;
+    if (surveyId == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Reset Semua Titik?'),
+          ],
+        ),
+        content: Text(
+          'Apakah Anda yakin ingin mengosongkan semua ${_stations.length} titik pada survei ini?\n\n'
+          'Titik-titik yang terhapus tidak dapat dikembalikan.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Ya, Kosongkan'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await widget.database.deleteSurveyStations(surveyId);
+      await _loadSurveys();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Semua titik survei berhasil dikosongkan.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    }
+  }
+
   void _resetZoom() {
     _transformController.value = Matrix4.identity();
   }
@@ -384,6 +433,12 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
               }
             },
           ),
+          if (_selectedSurveyId != null && _stations.isNotEmpty && !_selectedSurveyId!.startsWith('demo'))
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+              tooltip: 'Reset / Kosongkan Titik Survei',
+              onPressed: _confirmResetSurvey,
+            ),
         ],
       ),
       body: _isLoading
@@ -1195,10 +1250,13 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
       interpColor = isDark ? Colors.greenAccent : Colors.green.shade800;
     }
 
-    // Format posisi: tampilkan lat/long jika tersedia, jika tidak tampilkan lokal
+    // Format posisi: jika posisi lokal meter tersedia dan wajar (<1000m), tampilkan meter ruangan
     String posisiLabel;
     String posisiValue;
-    if (st.latitude != null && st.longitude != null) {
+    if (st.x.abs() < 1000 && st.y.abs() < 1000) {
+      posisiLabel = 'Posisi Ruangan';
+      posisiValue = '(${st.x.toStringAsFixed(1)}m, ${st.y.toStringAsFixed(1)}m)';
+    } else if (st.latitude != null && st.longitude != null) {
       posisiLabel = 'Lokasi (Lat, Lon)';
       posisiValue = '${st.latitude!.toStringAsFixed(5)}, ${st.longitude!.toStringAsFixed(5)}';
     } else {

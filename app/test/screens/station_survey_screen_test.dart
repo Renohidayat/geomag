@@ -184,6 +184,10 @@ void main() {
 
     await tester.pumpAndSettle();
 
+    // Beralih ke mode Koordinat GPS
+    await tester.tap(find.text('Koordinat GPS'));
+    await tester.pumpAndSettle();
+
     // Verifikasi opsi NMEA Eksternal
     expect(find.text('NMEA Eksternal'), findsOneWidget);
     await tester.tap(find.text('NMEA Eksternal'));
@@ -206,6 +210,53 @@ void main() {
     expect(find.textContaining('RTK Fix'), findsWidgets);
     expect(find.text('-6.891333'), findsOneWidget);
     expect(find.text('107.612000'), findsOneWidget);
+
+    mockService.close();
+    await testDb.close();
+  });
+
+  testWidgets(
+      'StationSurveyScreen mode Grid Ruangan (Meter), preset sudut, dan reset survei',
+      (tester) async {
+    final mockService = MockStationMagService();
+    final testDb = AppDatabase(NativeDatabase.memory());
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StationSurveyScreen(
+          service: mockService,
+          database: testDb,
+          recordDurationSeconds: 1,
+          minSamples: 5,
+          maxStdDevNt: 500.0,
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // Verifikasi mode Grid Ruangan aktif secara default
+    expect(find.text('Grid Ruangan (Meter)'), findsOneWidget);
+    expect(find.text('Pojok Kiri Bawah (0,0)'), findsOneWidget);
+    expect(find.text('Pojok Kanan Bawah (4,0)'), findsOneWidget);
+
+    // Ketuk preset Pojok Kanan Bawah (4,0)
+    await tester.tap(find.text('Pojok Kanan Bawah (4,0)'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('4.0'), findsOneWidget);
+
+    // Verifikasi tombol Reset Survei di AppBar
+    expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.delete_outline));
+    await tester.pumpAndSettle();
+
+    // Dialog reset muncul
+    expect(find.text('Reset Semua Titik?'), findsOneWidget);
+    await tester.tap(find.text('Batal'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reset Semua Titik?'), findsNothing);
 
     mockService.close();
     await testDb.close();

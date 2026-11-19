@@ -54,6 +54,11 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
   final TextEditingController _lonController = TextEditingController(text: '106.845600');
   final TextEditingController _altController = TextEditingController(text: '25.0');
 
+  // Mode posisi: Grid Ruangan / Lapangan Lokal (Meter) vs GPS Lintang/Bujur
+  bool _useRoomGrid = true;
+  final TextEditingController _localXController = TextEditingController(text: '0.0');
+  final TextEditingController _localYController = TextEditingController(text: '0.0');
+
   bool _useExternalGnss = false;
   NmeaPosition? _externalGnssPosition;
 
@@ -116,6 +121,8 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
     _latController.dispose();
     _lonController.dispose();
     _altController.dispose();
+    _localXController.dispose();
+    _localYController.dispose();
     if (widget.database == null) {
       _database.close();
     }
@@ -230,18 +237,34 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
     if (res == null || surveyId == null) return;
 
     try {
-      final stationId = 'st_${surveyId}_$_nextStationSequence';
-      final lat = double.tryParse(_latController.text);
-      final lon = double.tryParse(_lonController.text);
+      final currentSeq = _nextStationSequence;
+      final stationId = 'st_${surveyId}_$currentSeq';
+
+      double? localX;
+      double? localY;
+      double? lat;
+      double? lon;
+
+      if (_useRoomGrid) {
+        localX = double.tryParse(_localXController.text) ?? 0.0;
+        localY = double.tryParse(_localYController.text) ?? 0.0;
+        lat = -6.208800 + (localY * 0.000009);
+        lon = 106.845600 + (localX * 0.000009);
+      } else {
+        lat = double.tryParse(_latController.text);
+        lon = double.tryParse(_lonController.text);
+      }
 
       // 1. Simpan Station
       await _database.insertStation(
         StationsCompanion.insert(
           id: stationId,
           surveyId: surveyId,
-          sequenceNumber: _nextStationSequence,
+          sequenceNumber: currentSeq,
           latitude: Value(lat),
           longitude: Value(lon),
+          localX: Value(localX),
+          localY: Value(localY),
           environmentNotes: Value('Status: ${res.qualityFlag} - ${res.statusReason}'),
         ),
       );
@@ -283,16 +306,36 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
 
       await _database.insertSamplesBatch(sampleCompanions);
 
+      // Otomatis arahkan preset posisi selanjutnya agar mudah bagi pemula
+      if (_useRoomGrid) {
+        if (currentSeq == 1) {
+          _localXController.text = '4.0';
+          _localYController.text = '0.0';
+        } else if (currentSeq == 2) {
+          _localXController.text = '4.0';
+          _localYController.text = '4.0';
+        } else if (currentSeq == 3) {
+          _localXController.text = '0.0';
+          _localYController.text = '4.0';
+        } else if (currentSeq == 4) {
+          _localXController.text = '2.0';
+          _localYController.text = '2.0';
+        } else {
+          final curX = double.tryParse(_localXController.text) ?? 0.0;
+          _localXController.text = (curX + 2.0).toStringAsFixed(1);
+        }
+      }
+
       setState(() {
         _isSaved = true;
-        _nextStationSequence++;
+        _nextStationSequence = currentSeq + 1;
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Stasiun #$_nextStationSequence berhasil disimpan (${res.meanTotalFieldNt.toStringAsFixed(1)} ± ${res.stdDevTotalFieldNt.toStringAsFixed(1)} nT)',
+              'Titik #$currentSeq berhasil disimpan (${(res.meanTotalFieldNt / 1000.0).toStringAsFixed(1)} µT)',
             ),
             backgroundColor: Colors.green,
           ),
@@ -399,6 +442,108 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
     );
   }
 
+  Future<void> _confirmResetSurvey() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Reset Semua Titik?'),
+          ],
+        ),
+        content: Text(
+          'Apakah Anda yakin ingin mengosongkan semua titik pada "$_activeSurveyName"?\n\n'
+          'Seluruh data titik yang sudah direkam akan dihapus dan Anda bisa mulai kembali dari Titik 1.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Ya, Reset Bersih'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && _activeSurveyId != null) {
+      await _database.deleteSurveyStations(_activeSurveyId!);
+      setState(() {
+        _nextStationSequence = 1;
+        _aggregationResult = null;
+        _isSaved = false;
+        _stationSamples.clear();
+        _localXController.text = '0.0';
+        _localYController.text = '0.0';
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Survei berhasil direset! Anda dapat mulai merekam dari Titik 1.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteLastStation() async {
+    if (_nextStationSequence <= 1 || _activeSurveyId == null) return;
+    final lastSeq = _nextStationSequence - 1;
+    final lastStId = 'st_${_activeSurveyId}_$lastSeq';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.undo, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Hapus Titik Terakhir?'),
+          ],
+        ),
+        content: Text('Hapus Titik #$lastSeq dari database? Tindakan ini tidak dapat dibatalkan.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange.shade800,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Ya, Hapus Titik'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _database.deleteStation(lastStId);
+      setState(() {
+        _nextStationSequence = lastSeq;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Titik #$lastSeq berhasil dihapus.'),
+            backgroundColor: Colors.orange.shade800,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final res = _aggregationResult;
@@ -412,6 +557,19 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
       appBar: AppBar(
         title: const Text('Survei Stasiun Rover'),
         centerTitle: true,
+        actions: [
+          if (_nextStationSequence > 1)
+            IconButton(
+              icon: const Icon(Icons.undo),
+              tooltip: 'Hapus Titik Terakhir',
+              onPressed: _deleteLastStation,
+            ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+            tooltip: 'Reset Semua Titik Survei',
+            onPressed: _confirmResetSurvey,
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -482,7 +640,7 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                     ),
                     const Divider(height: 20),
                     Text(
-                      'Sumber Posisi (GPS):',
+                      'Mode Penentuan Posisi:',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textPrimary),
                     ),
                     const SizedBox(height: 6),
@@ -491,122 +649,243 @@ class _StationSurveyScreenState extends State<StationSurveyScreen> {
                       child: SegmentedButton<bool>(
                         segments: const [
                           ButtonSegment(
-                            value: false,
-                            label: Text('GPS HP Internal', style: TextStyle(fontSize: 11)),
-                            icon: Icon(Icons.smartphone, size: 14),
+                            value: true,
+                            label: Text('Grid Ruangan (Meter)', style: TextStyle(fontSize: 11)),
+                            icon: Icon(Icons.grid_4x4, size: 14),
                           ),
                           ButtonSegment(
-                            value: true,
-                            label: Text('NMEA Eksternal', style: TextStyle(fontSize: 11)),
-                            icon: Icon(Icons.bluetooth, size: 14),
+                            value: false,
+                            label: Text('Koordinat GPS', style: TextStyle(fontSize: 11)),
+                            icon: Icon(Icons.gps_fixed, size: 14),
                           ),
                         ],
-                        selected: {_useExternalGnss},
+                        selected: {_useRoomGrid},
                         onSelectionChanged: (val) {
-                          setState(() => _useExternalGnss = val.first);
+                          setState(() => _useRoomGrid = val.first);
                         },
                       ),
                     ),
-                    if (_useExternalGnss) ...[
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: _externalGnssPosition != null
-                              ? Colors.green.withValues(alpha: 0.15)
-                              : Colors.orange.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: _externalGnssPosition != null
-                                ? Colors.green.shade400
-                                : Colors.orange.shade400,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              _externalGnssPosition != null
-                                  ? Icons.gps_fixed
-                                  : Icons.gps_not_fixed,
-                              size: 20,
-                              color: _externalGnssPosition != null
-                                  ? (isDark ? Colors.greenAccent : Colors.green.shade700)
-                                  : (isDark ? Colors.orangeAccent : Colors.orange.shade700),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _externalGnssPosition != null
-                                        ? 'Fix: ${_externalGnssPosition!.fixQuality.label} (Sat: ${_externalGnssPosition!.satellites ?? "-"}, HDOP: ${_externalGnssPosition!.hdop ?? "-"})'
-                                        : 'Belum ada kalimat NMEA terhubung',
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: textPrimary),
-                                  ),
-                                  if (_externalGnssPosition != null)
-                                    Text(
-                                      'Alt: ${_externalGnssPosition!.altitudeM?.toStringAsFixed(1) ?? "-"}m • Tipe: ${_externalGnssPosition!.sentenceType}',
-                                      style: TextStyle(fontSize: 10, color: textSecondary),
-                                    ),
-                                ],
+                    const SizedBox(height: 12),
+                    if (_useRoomGrid) ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _localXController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                              decoration: const InputDecoration(
+                                labelText: 'Posisi X (Meter)',
+                                hintText: '0.0',
+                                border: OutlineInputBorder(),
+                                isDense: true,
                               ),
                             ),
-                            TextButton.icon(
-                              icon: const Icon(Icons.input, size: 16),
-                              label: const Text('Input NMEA', style: TextStyle(fontSize: 11)),
-                              onPressed: _showNmeaInputDialog,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: _localYController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                              decoration: const InputDecoration(
+                                labelText: 'Posisi Y (Meter)',
+                                hintText: '0.0',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Pilihan Cepat Posisi Ruangan:',
+                        style: TextStyle(fontSize: 11, color: textSecondary),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          ActionChip(
+                            avatar: const Icon(Icons.south_west, size: 14),
+                            label: const Text('Pojok Kiri Bawah (0,0)', style: TextStyle(fontSize: 11)),
+                            onPressed: () {
+                              setState(() {
+                                _localXController.text = '0.0';
+                                _localYController.text = '0.0';
+                              });
+                            },
+                          ),
+                          ActionChip(
+                            avatar: const Icon(Icons.south_east, size: 14),
+                            label: const Text('Pojok Kanan Bawah (4,0)', style: TextStyle(fontSize: 11)),
+                            onPressed: () {
+                              setState(() {
+                                _localXController.text = '4.0';
+                                _localYController.text = '0.0';
+                              });
+                            },
+                          ),
+                          ActionChip(
+                            avatar: const Icon(Icons.north_east, size: 14),
+                            label: const Text('Pojok Kanan Atas (4,4)', style: TextStyle(fontSize: 11)),
+                            onPressed: () {
+                              setState(() {
+                                _localXController.text = '4.0';
+                                _localYController.text = '4.0';
+                              });
+                            },
+                          ),
+                          ActionChip(
+                            avatar: const Icon(Icons.north_west, size: 14),
+                            label: const Text('Pojok Kiri Atas (0,4)', style: TextStyle(fontSize: 11)),
+                            onPressed: () {
+                              setState(() {
+                                _localXController.text = '0.0';
+                                _localYController.text = '4.0';
+                              });
+                            },
+                          ),
+                          ActionChip(
+                            avatar: const Icon(Icons.crop_free, size: 14),
+                            label: const Text('Tengah (2,2)', style: TextStyle(fontSize: 11)),
+                            onPressed: () {
+                              setState(() {
+                                _localXController.text = '2.0';
+                                _localYController.text = '2.0';
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      Text(
+                        'Sumber Posisi (GPS):',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textPrimary),
+                      ),
+                      const SizedBox(height: 6),
+                      SizedBox(
+                        width: double.infinity,
+                        child: SegmentedButton<bool>(
+                          segments: const [
+                            ButtonSegment(
+                              value: false,
+                              label: Text('GPS HP Internal', style: TextStyle(fontSize: 11)),
+                              icon: Icon(Icons.smartphone, size: 14),
+                            ),
+                            ButtonSegment(
+                              value: true,
+                              label: Text('NMEA Eksternal', style: TextStyle(fontSize: 11)),
+                              icon: Icon(Icons.bluetooth, size: 14),
                             ),
                           ],
+                          selected: {_useExternalGnss},
+                          onSelectionChanged: (val) {
+                            setState(() => _useExternalGnss = val.first);
+                          },
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 12),
-                    Text(
-                      'Koordinat Lokasi Stasiun:',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textPrimary),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _latController,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Latitude',
-                              border: OutlineInputBorder(),
-                              isDense: true,
+                      if (_useExternalGnss) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: _externalGnssPosition != null
+                                ? Colors.green.withValues(alpha: 0.15)
+                                : Colors.orange.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: _externalGnssPosition != null
+                                  ? Colors.green.shade400
+                                  : Colors.orange.shade400,
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: _lonController,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Longitude',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 80,
-                          child: TextField(
-                            controller: _altController,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Elev (m)',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _externalGnssPosition != null
+                                    ? Icons.gps_fixed
+                                    : Icons.gps_not_fixed,
+                                size: 20,
+                                color: _externalGnssPosition != null
+                                    ? (isDark ? Colors.greenAccent : Colors.green.shade700)
+                                    : (isDark ? Colors.orangeAccent : Colors.orange.shade700),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _externalGnssPosition != null
+                                          ? 'Fix: ${_externalGnssPosition!.fixQuality.label} (Sat: ${_externalGnssPosition!.satellites ?? "-"}, HDOP: ${_externalGnssPosition!.hdop ?? "-"})'
+                                          : 'Belum ada kalimat NMEA terhubung',
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: textPrimary),
+                                    ),
+                                    if (_externalGnssPosition != null)
+                                      Text(
+                                        'Alt: ${_externalGnssPosition!.altitudeM?.toStringAsFixed(1) ?? "-"}m • Tipe: ${_externalGnssPosition!.sentenceType}',
+                                        style: TextStyle(fontSize: 10, color: textSecondary),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              TextButton.icon(
+                                icon: const Icon(Icons.input, size: 16),
+                                label: const Text('Input NMEA', style: TextStyle(fontSize: 11)),
+                                onPressed: _showNmeaInputDialog,
+                              ),
+                            ],
                           ),
                         ),
                       ],
-                    ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Koordinat Lokasi Stasiun:',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textPrimary),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _latController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Latitude',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: _lonController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Longitude',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 80,
+                            child: TextField(
+                              controller: _altController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Elev (m)',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
