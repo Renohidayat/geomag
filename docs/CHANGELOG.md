@@ -19,6 +19,8 @@ Semua perubahan penting dicatat di sini.
 - Pembaruan tampilan beranda `HomeScreen` dengan menerapkan koreksi bias hard-iron (`calibratedTotalFieldNt` atau profil kalibrasi aktif dari database) pada meteran jarum analog dan grafik gelombang real-time sehingga di udara bebas nilai terbaca normal di zona hijau (~42.000–46.000 nT) (#47)
 
 ### Ditambahkan
+- Kartu Ringkasan Otomatis Bahasa Manusia (*Smart Room Summary*) pada `AnomalyMapScreen` yang secara cerdas mendeteksi zona paling tenang (medan terendah) dan zona paling kuat/dinding, menghitung selisih variasi medan dalam µT, serta memberikan kesimpulan praktis ramah awam untuk tata ruang dan relaksasi (#57)
+- Panel analisis bawah interaktif pada `AnomalyMapScreen` dengan pemilih tab ChoiceChip ("Ringkasan Ruangan" vs "Rincian Titik #N") dan tombol ciutkan/bentangkan (*collapse/expand*) agar tampilan visual peta 2D tetap lega (#57)
 - Layar Pengaturan & Preferensi baru (`SettingsScreen`) dengan opsi satuan utama (µT vs nT), slider kustomisasi ambang batas deteksi anomali, ringkasan kuota statistik database lokal, info spesifikasi chip sensor, dan tombol Reset Pabrik Database (#55)
 - Fitur reset survei instan (kosongkan semua titik stasiun) dengan dialog konfirmasi pada `StationSurveyScreen` dan `AnomalyMapScreen` agar pengguna dapat mengulang survei tanpa harus menghapus data aplikasi dari pengaturan HP (#55)
 - Fitur pembatalan titik terakhir (Undo) pada `StationSurveyScreen` untuk menghapus stasiun yang keliru direkam (#55)

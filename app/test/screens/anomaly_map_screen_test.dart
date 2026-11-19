@@ -375,4 +375,35 @@ void main() {
 
     mockService.close();
   });
+
+  testWidgets(
+      'AnomalyMapScreen menampilkan Ringkasan Ruangan dan dapat beralih ke Rincian Titik',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AnomalyMapScreen(database: db),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verifikasi chip tab Ringkasan Ruangan dan Rincian Titik
+    expect(find.text('Ringkasan Ruangan'), findsOneWidget);
+    expect(find.textContaining('Analisis Keseluruhan Ruangan'), findsOneWidget);
+    expect(find.text('🟢 Paling Tenang'), findsOneWidget);
+    expect(find.text('🔴 Paling Kuat'), findsOneWidget);
+    expect(find.text('📏 Selisih Ruangan'), findsOneWidget);
+
+    // Beralih ke tab Rincian Titik
+    expect(find.textContaining('Rincian Titik #'), findsOneWidget);
+    await tester.tap(find.textContaining('Rincian Titik #'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Titik #'), findsWidgets);
+
+    // Beralih kembali ke Ringkasan Ruangan
+    await tester.tap(find.text('Ringkasan Ruangan'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Analisis Keseluruhan Ruangan'), findsOneWidget);
+  });
 }

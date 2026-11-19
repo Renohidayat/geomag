@@ -105,6 +105,8 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
   bool _showPath = true;
   bool _showStationNumbers = true;
   bool _showLiveMonitor = true;
+  bool _showRoomSummary = true;
+  bool _isBottomPanelCollapsed = false;
 
   @override
   void initState() {
@@ -486,7 +488,11 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
 
                                       // Toleransi ketukan 35px
                                       if (minDistance <= 35.0 && closest != null) {
-                                        setState(() => _highlightedStation = closest);
+                                        setState(() {
+                                          _highlightedStation = closest;
+                                          _showRoomSummary = false;
+                                          _isBottomPanelCollapsed = false;
+                                        });
                                       }
                                     },
                                     child: CustomPaint(
@@ -497,7 +503,11 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
                                         showPath: _showPath,
                                         showStationNumbers: _showStationNumbers,
                                         onStationTapped: (st) {
-                                          setState(() => _highlightedStation = st);
+                                          setState(() {
+                                            _highlightedStation = st;
+                                            _showRoomSummary = false;
+                                            _isBottomPanelCollapsed = false;
+                                          });
                                         },
                                       ),
                                     ),
@@ -528,8 +538,8 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
                 ),
                 if (activeGrid != null && _stations.length >= 3 && _showLiveMonitor)
                   _buildLiveSensorMonitor(theme),
-                if (activeGrid != null && _stations.length >= 3 && _highlightedStation != null)
-                  _buildStationInfoCard(theme, _highlightedStation!),
+                if (activeGrid != null && _stations.length >= 3)
+                  _buildBottomAnalysisPanel(theme),
               ],
             ),
     );
@@ -1230,7 +1240,185 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
     );
   }
 
-  Widget _buildStationInfoCard(ThemeData theme, MapStationMarker st) {
+  Widget _buildBottomAnalysisPanel(ThemeData theme) {
+    final currentStation = _highlightedStation ?? (_stations.isNotEmpty ? _stations.first : null);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Tab Selector & Tombol Lipat
+            Row(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        ChoiceChip(
+                          avatar: const Icon(Icons.analytics_outlined, size: 14),
+                          label: const Text('Ringkasan Ruangan', style: TextStyle(fontSize: 11)),
+                          selected: _showRoomSummary,
+                          onSelected: (val) {
+                            if (val) setState(() => _showRoomSummary = true);
+                          },
+                        ),
+                        if (currentStation != null) ...[
+                          const SizedBox(width: 6),
+                          ChoiceChip(
+                            avatar: const Icon(Icons.place_outlined, size: 14),
+                            label: Text('Rincian Titik #${currentStation.sequenceNumber}', style: const TextStyle(fontSize: 11)),
+                            selected: !_showRoomSummary,
+                            onSelected: (val) {
+                              if (val) setState(() => _showRoomSummary = false);
+                            },
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(
+                    _isBottomPanelCollapsed ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                    size: 20,
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: _isBottomPanelCollapsed ? 'Buka Panel' : 'Lipat Panel',
+                  onPressed: () => setState(() => _isBottomPanelCollapsed = !_isBottomPanelCollapsed),
+                ),
+              ],
+            ),
+            if (!_isBottomPanelCollapsed) ...[
+              const SizedBox(height: 8),
+              if (_showRoomSummary)
+                _buildRoomSummaryContent(theme)
+              else if (currentStation != null)
+                _buildStationInfoContent(theme, currentStation),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRoomSummaryContent(ThemeData theme) {
+    if (_stations.isEmpty) return const SizedBox.shrink();
+
+    final isDark = theme.brightness == Brightness.dark;
+
+    final minStation = _stations.reduce((a, b) => a.totalFieldNt < b.totalFieldNt ? a : b);
+    final maxStation = _stations.reduce((a, b) => a.totalFieldNt > b.totalFieldNt ? a : b);
+
+    final minMicroT = minStation.totalFieldNt / 1000.0;
+    final maxMicroT = maxStation.totalFieldNt / 1000.0;
+    final deltaMicroT = (maxStation.totalFieldNt - minStation.totalFieldNt) / 1000.0;
+
+    String statusBadge;
+    Color badgeColor;
+    IconData badgeIcon;
+    String recommendationText;
+
+    if (maxMicroT > 58.0) {
+      statusBadge = 'Perhatian: Ada Medan Kuat';
+      badgeColor = isDark ? Colors.redAccent : Colors.red.shade700;
+      badgeIcon = Icons.warning_amber_rounded;
+      recommendationText =
+          'Terdeteksi lonjakan medan magnetik tinggi di sekitar Titik #${maxStation.sequenceNumber} (${maxMicroT.toStringAsFixed(1)} µT). '
+          'Indikasi adanya kabel listrik aktif atau tiang besi di balik dinding. Hindari menaruh tempat duduk/istirahat menempel langsung di titik ini.';
+    } else if (maxMicroT > 48.0) {
+      statusBadge = 'Anomali Sedang (Wajar)';
+      badgeColor = isDark ? Colors.orangeAccent : Colors.orange.shade800;
+      badgeIcon = Icons.info_outline;
+      recommendationText =
+          'Kondisi ruangan cukup stabil dengan variasi medan sedang (${deltaMicroT.toStringAsFixed(1)} µT). '
+          'Area terbaik dan paling tenang adalah di sekitar Titik #${minStation.sequenceNumber} (${minMicroT.toStringAsFixed(1)} µT).';
+    } else {
+      statusBadge = 'Sangat Stabil & Aman (Alami)';
+      badgeColor = isDark ? Colors.greenAccent : Colors.green.shade700;
+      badgeIcon = Icons.check_circle_outline;
+      recommendationText =
+          'Ruangan ini berada dalam rentang medan alami bumi yang seimbang dan bebas dari gangguan kabel listrik tegangan tinggi. '
+          'Area paling tenang dan netral berada di sekitar Titik #${minStation.sequenceNumber} (${minMicroT.toStringAsFixed(1)} µT).';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Icon(badgeIcon, size: 16, color: badgeColor),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                'Analisis Keseluruhan Ruangan (${_stations.length} Titik)',
+                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: badgeColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: badgeColor.withValues(alpha: 0.5)),
+              ),
+              child: Text(
+                statusBadge,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: badgeColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          recommendationText,
+          style: TextStyle(
+            fontSize: 11,
+            color: isDark ? Colors.white70 : Colors.black87,
+            height: 1.3,
+          ),
+        ),
+        const Divider(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: _metricCol(
+                '🟢 Paling Tenang',
+                'Titik #${minStation.sequenceNumber} (${minMicroT.toStringAsFixed(1)} µT)',
+              ),
+            ),
+            Expanded(
+              child: _metricCol(
+                '🔴 Paling Kuat',
+                'Titik #${maxStation.sequenceNumber} (${maxMicroT.toStringAsFixed(1)} µT)',
+              ),
+            ),
+            Expanded(
+              child: _metricCol(
+                '📏 Selisih Ruangan',
+                '${deltaMicroT.toStringAsFixed(1)} µT',
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStationInfoContent(ThemeData theme, MapStationMarker st) {
     final isDark = theme.brightness == Brightness.dark;
 
     String interpText;
@@ -1250,7 +1438,6 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
       interpColor = isDark ? Colors.greenAccent : Colors.green.shade800;
     }
 
-    // Format posisi: jika posisi lokal meter tersedia dan wajar (<1000m), tampilkan meter ruangan
     String posisiLabel;
     String posisiValue;
     if (st.x.abs() < 1000 && st.y.abs() < 1000) {
@@ -1264,80 +1451,63 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
       posisiValue = '(${st.x.toStringAsFixed(1)}m, ${st.y.toStringAsFixed(1)}m)';
     }
 
-    // Format nilai medan dalam µT agar lebih mudah dibaca
     final medanMicroT = st.totalFieldNt / 1000.0;
     final anomMicroT = (st.deltaTNt ?? 0) / 1000.0;
 
-    return Card(
-      margin: const EdgeInsets.all(12),
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                const Icon(Icons.place, size: 18, color: Colors.amber),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    'Titik ${st.sequenceNumber}',
-                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Chip(
-                  label: Text(
-                    st.qualityFlag,
-                    style: TextStyle(
-                      color: st.isAccepted
-                          ? (isDark ? Colors.greenAccent : Colors.green.shade900)
-                          : (isDark ? Colors.redAccent : Colors.red.shade900),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 11,
-                    ),
-                  ),
-                  backgroundColor: st.isAccepted
-                      ? (isDark ? const Color(0xFF142E18) : Colors.green.shade100)
-                      : (isDark ? const Color(0xFF321414) : Colors.red.shade100),
-                  padding: EdgeInsets.zero,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                const SizedBox(width: 4),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 16),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  tooltip: 'Tutup Rincian',
-                  onPressed: () => setState(() => _highlightedStation = null),
-                ),
-              ],
+            const Icon(Icons.place, size: 18, color: Colors.amber),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                'Titik #${st.sequenceNumber}',
+                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              '• $interpText',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: interpColor),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              interpAdvice,
-              style: TextStyle(fontSize: 10, color: isDark ? Colors.white70 : Colors.black87),
-            ),
-            const Divider(height: 12),
-            Row(
-              children: [
-                Expanded(child: _metricCol(posisiLabel, posisiValue)),
-                Expanded(child: _metricCol('Medan Total', '${medanMicroT.toStringAsFixed(1)} µT')),
-                Expanded(child: _metricCol('Anomali ΔT', '${anomMicroT.toStringAsFixed(2)} µT')),
-              ],
+            const SizedBox(width: 4),
+            Chip(
+              label: Text(
+                st.qualityFlag,
+                style: TextStyle(
+                  color: st.isAccepted
+                      ? (isDark ? Colors.greenAccent : Colors.green.shade900)
+                      : (isDark ? Colors.redAccent : Colors.red.shade900),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                ),
+              ),
+              backgroundColor: st.isAccepted
+                  ? (isDark ? const Color(0xFF142E18) : Colors.green.shade100)
+                  : (isDark ? const Color(0xFF321414) : Colors.red.shade100),
+              padding: EdgeInsets.zero,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 4),
+        Text(
+          '• $interpText',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: interpColor),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          interpAdvice,
+          style: TextStyle(fontSize: 10, color: isDark ? Colors.white70 : Colors.black87),
+        ),
+        const Divider(height: 12),
+        Row(
+          children: [
+            Expanded(child: _metricCol(posisiLabel, posisiValue)),
+            Expanded(child: _metricCol('Medan Total', '${medanMicroT.toStringAsFixed(1)} µT')),
+            Expanded(child: _metricCol('Anomali ΔT', '${anomMicroT.toStringAsFixed(2)} µT')),
+          ],
+        ),
+      ],
     );
   }
 
