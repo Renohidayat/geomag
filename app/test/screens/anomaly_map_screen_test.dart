@@ -67,7 +67,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verifikasi AppBar
-    expect(find.text('Peta Anomali Geomagnetik'), findsOneWidget);
+    expect(find.text('Peta Anomali 2D'), findsOneWidget);
 
     // Verifikasi segmen layer
     expect(find.text('B Obs'), findsWidgets);
@@ -277,9 +277,9 @@ void main() {
     expect(find.text('Sumbu Atas (+Y)'), findsOneWidget);
 
     // Verifikasi FilterChips kontrol tampilan
-    expect(find.text('Jalur Rute (1➔2➔3)'), findsOneWidget);
-    expect(find.text('Nomor Titik'), findsOneWidget);
-    expect(find.text('Sensor HP Live'), findsOneWidget);
+    expect(find.text('Jalur Rute'), findsOneWidget);
+    expect(find.text('No. Titik'), findsOneWidget);
+    expect(find.text('Live Sensor'), findsOneWidget);
 
     // Verifikasi label ramah pemula di legenda colormap
     expect(find.text('🔵 Medan Rendah'), findsOneWidget);
@@ -287,10 +287,10 @@ void main() {
     expect(find.text('🔴 Tinggi (Logam/Kabel)'), findsOneWidget);
 
     // Verifikasi ketukan pada FilterChip berfungsi
-    await tester.tap(find.text('Jalur Rute (1➔2➔3)'));
+    await tester.tap(find.text('Jalur Rute'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Nomor Titik'));
+    await tester.tap(find.text('No. Titik'));
     await tester.pumpAndSettle();
 
     // Verifikasi panduan bantuan memiliki bagian orientasi dan navigasi lapangan

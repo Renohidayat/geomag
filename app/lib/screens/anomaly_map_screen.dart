@@ -356,7 +356,7 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Peta Anomali Geomagnetik'),
+        title: const Text('Peta Anomali 2D'),
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline),
@@ -654,21 +654,21 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
         children: [
           FilterChip(
             avatar: const Icon(Icons.route, size: 16),
-            label: const Text('Jalur Rute (1➔2➔3)', style: TextStyle(fontSize: 11)),
+            label: const Text('Jalur Rute', style: TextStyle(fontSize: 11)),
             selected: _showPath,
             onSelected: (val) => setState(() => _showPath = val),
           ),
           const SizedBox(width: 6),
           FilterChip(
             avatar: const Icon(Icons.pin_outlined, size: 16),
-            label: const Text('Nomor Titik', style: TextStyle(fontSize: 11)),
+            label: const Text('No. Titik', style: TextStyle(fontSize: 11)),
             selected: _showStationNumbers,
             onSelected: (val) => setState(() => _showStationNumbers = val),
           ),
           const SizedBox(width: 6),
           FilterChip(
             avatar: const Icon(Icons.sensors, size: 16),
-            label: const Text('Sensor HP Live', style: TextStyle(fontSize: 11)),
+            label: const Text('Live Sensor', style: TextStyle(fontSize: 11)),
             selected: _showLiveMonitor,
             onSelected: (val) => setState(() => _showLiveMonitor = val),
           ),
@@ -791,12 +791,15 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
             children: [
               Icon(Icons.sensors, size: 16, color: theme.colorScheme.primary),
               const SizedBox(width: 6),
-              Text(
-                'Monitor Sensor HP Real-Time',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black87,
+              Expanded(
+                child: Text(
+                  'Monitor Sensor HP Real-Time',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const Spacer(),
@@ -829,12 +832,15 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
           const SizedBox(height: 4),
           Row(
             children: [
-              Text(
-                statusTitle,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: badgeColor,
+              Expanded(
+                child: Text(
+                  statusTitle,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: badgeColor,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -1189,6 +1195,21 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
       interpColor = isDark ? Colors.greenAccent : Colors.green.shade800;
     }
 
+    // Format posisi: tampilkan lat/long jika tersedia, jika tidak tampilkan lokal
+    String posisiLabel;
+    String posisiValue;
+    if (st.latitude != null && st.longitude != null) {
+      posisiLabel = 'Lokasi (Lat, Lon)';
+      posisiValue = '${st.latitude!.toStringAsFixed(5)}, ${st.longitude!.toStringAsFixed(5)}';
+    } else {
+      posisiLabel = 'Posisi Lokal';
+      posisiValue = '(${st.x.toStringAsFixed(1)}m, ${st.y.toStringAsFixed(1)}m)';
+    }
+
+    // Format nilai medan dalam µT agar lebih mudah dibaca
+    final medanMicroT = st.totalFieldNt / 1000.0;
+    final anomMicroT = (st.deltaTNt ?? 0) / 1000.0;
+
     return Card(
       margin: const EdgeInsets.all(12),
       elevation: 3,
@@ -1200,46 +1221,41 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    const Icon(Icons.place, size: 18, color: Colors.amber),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Stasiun #${st.sequenceNumber} (${st.stationId})',
-                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                  ],
+                const Icon(Icons.place, size: 18, color: Colors.amber),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Titik ${st.sequenceNumber}',
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                Row(
-                  children: [
-                    Chip(
-                      label: Text(
-                        st.qualityFlag,
-                        style: TextStyle(
-                          color: st.isAccepted
-                              ? (isDark ? Colors.greenAccent : Colors.green.shade900)
-                              : (isDark ? Colors.redAccent : Colors.red.shade900),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
-                        ),
-                      ),
-                      backgroundColor: st.isAccepted
-                          ? (isDark ? const Color(0xFF142E18) : Colors.green.shade100)
-                          : (isDark ? const Color(0xFF321414) : Colors.red.shade100),
-                      padding: EdgeInsets.zero,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                const SizedBox(width: 4),
+                Chip(
+                  label: Text(
+                    st.qualityFlag,
+                    style: TextStyle(
+                      color: st.isAccepted
+                          ? (isDark ? Colors.greenAccent : Colors.green.shade900)
+                          : (isDark ? Colors.redAccent : Colors.red.shade900),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
                     ),
-                    const SizedBox(width: 6),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 16),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      tooltip: 'Tutup Rincian',
-                      onPressed: () => setState(() => _highlightedStation = null),
-                    ),
-                  ],
+                  ),
+                  backgroundColor: st.isAccepted
+                      ? (isDark ? const Color(0xFF142E18) : Colors.green.shade100)
+                      : (isDark ? const Color(0xFF321414) : Colors.red.shade100),
+                  padding: EdgeInsets.zero,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 16),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: 'Tutup Rincian',
+                  onPressed: () => setState(() => _highlightedStation = null),
                 ),
               ],
             ),
@@ -1255,11 +1271,10 @@ class _AnomalyMapScreenState extends State<AnomalyMapScreen> {
             ),
             const Divider(height: 12),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _metricCol('Posisi X, Y', '(${st.x.toStringAsFixed(1)}m, ${st.y.toStringAsFixed(1)}m)'),
-                _metricCol('Medan Total (B)', '${st.totalFieldNt.toStringAsFixed(1)} nT'),
-                _metricCol('Anomali ΔT', '${st.deltaTNt?.toStringAsFixed(1) ?? "-"} nT'),
+                Expanded(child: _metricCol(posisiLabel, posisiValue)),
+                Expanded(child: _metricCol('Medan Total', '${medanMicroT.toStringAsFixed(1)} µT')),
+                Expanded(child: _metricCol('Anomali ΔT', '${anomMicroT.toStringAsFixed(2)} µT')),
               ],
             ),
           ],
