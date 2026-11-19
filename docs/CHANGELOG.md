@@ -5,6 +5,12 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Diperbaiki
+- Perbaikan layout RenderFlex overflow 35 pixels pada kartu rincian stasiun (`_buildStationInfoCard`) di `AnomalyMapScreen` dengan pembungkusan `Expanded` dan tata letak responsif (#53)
+- Pembaruan penamaan stasiun pada kartu rincian dari ID teknis database mentah (`st_survey_default_rover_1`) menjadi label ramah awam "Titik 1", "Titik 2" (#53)
+- Pemformatan koordinat posisi stasiun pada kartu rincian menjadi format geografis (Lintang, Bujur) atau koordinat lokal relatif, menggantikan konversi meter skala jutaan yang membingungkan (#53)
+- Pemendekan judul AppBar menjadi "Peta Anomali 2D" agar pas dan tidak terpotong pada layar smartphone yang sempit (#53)
+- Pemendekan label tombol FilterChips (Jalur Rute, No. Titik, Live Sensor) dan pengamanan teks status sensor live agar tidak terpotong di tepi kanan layar (#53)
+- Konversi nilai medan total dan anomali pada kartu rincian stasiun ke satuan mikroTesla (µT) yang lebih ringkas dan mudah dipahami orang awam berdampingan dengan penjelasan interpretasinya (#53)
 - Perbaikan kontras warna teks dan adaptasi tema gelap (Dark Mode) pada kartu hasil pengukuran di `StationSurveyScreen`, menghilangkan tabrakan teks putih di atas latar terang (#49)
 - Perbaikan layout RenderFlex overflow 22 pixels pada tombol durasi survei dengan `Wrap` responsif (#49)
 - Perbaikan layout RenderFlex overflow 11 pixels pada pemilih sumber posisi di `StationSurveyScreen` dengan tata letak vertikal penuh (#49)
