@@ -93,14 +93,15 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
           biasZMicroT: 0.0,
           accuracy: 3,
           isUncalibrated: false,
-          batteryTempC: 35.5,
+          batteryTempC: -1.0, // Hapus fallback 35.5/27.0: tandai -1.0 jika stream belum ada data
           isCharging: false,
           isScreenOn: true,
           pressureHpa: 1013.2,
         );
   }
 
-  String _formatTemp(double val) {
+  String _formatTemp(double? val) {
+    if (val == null) return '--';
     return val.toStringAsFixed(1).replaceAll('.', ',');
   }
 
@@ -406,7 +407,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
   Widget _buildSuhuKamarDialCard(
     ThemeData theme,
     RoomClimateData data,
-    double tempValue,
+    double? tempValue,
     String tempUnit,
   ) {
     const cardBgColor = Color(0xFF00A8B5);
@@ -467,7 +468,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
             width: 260,
             height: 220,
             child: TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: 20.0, end: data.ambientTempC),
+              tween: Tween<double>(begin: 20.0, end: data.ambientTempC ?? 0.0),
               duration: const Duration(milliseconds: 700),
               curve: Curves.easeOutCubic,
               builder: (context, animatedTempC, child) {
@@ -666,7 +667,9 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
               ),
               _buildModalRow(
                 'Kompensasi Panas Internal',
-                '-${_formatTemp((data.hardwareTempC - data.ambientTempC).abs())} °C',
+                data.ambientTempC != null
+                    ? '-${_formatTemp((data.hardwareTempC - data.ambientTempC!).abs())} °C'
+                    : '--',
               ),
               _buildModalRow(
                 'Suhu Kamar Terestimasi',

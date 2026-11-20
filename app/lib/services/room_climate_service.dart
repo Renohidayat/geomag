@@ -83,11 +83,11 @@ class OutdoorWeatherData {
 
 /// Data hasil analisis termometer ruangan dan detektor iklim instan.
 class RoomClimateData {
-  /// Estimasi suhu udara ambien terkalibrasi (°C).
-  final double ambientTempC;
+  /// Estimasi suhu udara ambien terkalibrasi (°C), null jika sensor tidak tersedia.
+  final double? ambientTempC;
 
-  /// Estimasi suhu udara ambien terkalibrasi (°F).
-  final double ambientTempF;
+  /// Estimasi suhu udara ambien terkalibrasi (°F), null jika sensor tidak tersedia.
+  final double? ambientTempF;
 
   /// Suhu sensor perangkat keras (baterai/chipset) (°C).
   final double hardwareTempC;
@@ -334,31 +334,23 @@ class RoomClimateService {
 
   /// Menghitung estimasi suhu udara ambien (°C) dari sensor termal ponsel.
   ///
-  /// Menggunakan model disipasi termal adaptif non-linear:
-  /// Saat ponsel dalam keadaan aktif / dipegang tangan, panas baterai mencapai 34°C - 36°C
-  /// akibat beban CPU, layar, dan transfer kalor tubuh.
-  /// Pada aplikasi rujukan (Digital Thermometer), baterai 35.5°C dikompensasi
-  /// menjadi suhu ruangan ~27.0°C (delta 8.5°C).
-  static double estimateAmbientTemp({
+  /// Menggunakan model uncalibrated sementara yang monoton terhadap T_bat:
+  /// T_ruang = T_bat - D0 + offset (D0 = 3.0°C perkiraan kasar).
+  /// Menghasilkan nilai null jika sensor baterai tidak tersedia (<= 0).
+  static double? estimateAmbientTemp({
     required double batteryTempC,
     required bool isCharging,
     required bool isScreenOn,
     double userOffsetC = 0.0,
     bool isOutdoor = false,
   }) {
+    // Hapus fallback 27.0: kembalikan null jika sensor tidak tersedia
     if (batteryTempC <= 0) {
-      return 27.0 + userOffsetC;
+      return null;
     }
 
-    // Delta dasar untuk ponsel dingin/idle (~3.0°C)
+    // Delta dasar uncalibrated (perkiraan kasar)
     double deltaInternal = 3.0;
-
-    // Kompensasi non-linear saat perangkat mulai panas (> 30.0°C)
-    // Formula: untuk T_bat = 35.5°C -> delta = 3.0 + (35.5 - 30.0) * 1.0 = 8.5°C
-    // Hasil estimasi: 35.5 - 8.5 = 27.0°C (persis seperti aplikasi rujukan).
-    if (batteryTempC > 30.0) {
-      deltaInternal += (batteryTempC - 30.0) * 1.0;
-    }
 
     if (isCharging) {
       deltaInternal += 2.0; // Panas reaksi kimia charging
@@ -368,6 +360,7 @@ class RoomClimateService {
       deltaInternal -= 0.5; // Pendinginan konveksi udara luar
     }
 
+    // Model monoton: turunan d(estimated)/d(batteryTempC) = 1.0 > 0
     final estimated = batteryTempC - deltaInternal + userOffsetC;
     return estimated.clamp(-10.0, 60.0);
   }
@@ -397,8 +390,8 @@ class RoomClimateService {
       isOutdoor: isOutdoor,
     );
 
-    final ambientF = celsiusToFahrenheit(ambientC);
-    final hardwareC = sample.batteryTempC > 0 ? sample.batteryTempC : (ambientC + 3.0);
+    final ambientF = ambientC != null ? celsiusToFahrenheit(ambientC) : null;
+    final hardwareC = sample.batteryTempC > 0 ? sample.batteryTempC : 0.0;
     final emfMicroT = sample.totalFieldMicroT;
 
     final thermalState = evaluateThermalState(hardwareC);
@@ -422,25 +415,33 @@ class RoomClimateService {
         ? sample.pressureHpa
         : (1012.8 + sin(sample.timestampNs / 1e11) * 0.4);
 
-    final humidity = estimateHumidityPercent(
-      ambientTempC: ambientC,
-      pressureHpa: pressure,
-    );
+    final humidity = ambientC != null
+        ? estimateHumidityPercent(
+            ambientTempC: ambientC,
+            pressureHpa: pressure,
+          )
+        : 55.0;
 
     // Kualitas udara estimasi (AQI) berbasis suhu dan kestabilan tekanan
-    final aqi = 35 + ((ambientC - 24.0).abs() * 2).toInt().clamp(20, 85);
+    final aqi = ambientC != null
+        ? 35 + ((ambientC - 24.0).abs() * 2).toInt().clamp(20, 85)
+        : 40;
     final aqiLabel = aqi <= 50 ? 'Baik (AQI $aqi)' : 'Sedang (AQI $aqi)';
 
     // Deteksi hawa panas terfokus (Joule heating)
     final isEmfHigh = emfMicroT > kHotspotEmfThresholdMicroT;
-    final isTempHot = ambientC > 31.0;
+    final isTempHot = ambientC != null && ambientC > 31.0;
     final isHotspot = isEmfHigh || (isTempHot && emfMicroT > 55.0);
 
     RoomComfortLevel level;
     String title;
     String desc;
 
-    if (isHotspot) {
+    if (ambientC == null) {
+      level = RoomComfortLevel.comfortable;
+      title = 'Sensor Tidak Tersedia';
+      desc = 'Menunggu data suhu baterai atau sensor hardware...';
+    } else if (isHotspot) {
       level = RoomComfortLevel.hotspot;
       title = '🔥 Hawa Panas Terfokus';
       desc = isEmfHigh
