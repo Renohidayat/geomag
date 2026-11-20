@@ -38,6 +38,9 @@ class MagnetometerSample {
   /// Apakah layar menyala.
   final bool isScreenOn;
 
+  /// Tekanan atmosfer dalam hPa/mbar jika sensor barometer tersedia (-1 jika tidak tersedia).
+  final double pressureHpa;
+
   const MagnetometerSample({
     required this.timestampNs,
     required this.rawXMicroT,
@@ -51,6 +54,7 @@ class MagnetometerSample {
     required this.batteryTempC,
     required this.isCharging,
     required this.isScreenOn,
+    this.pressureHpa = -1.0,
   });
 
   /// Total field (magnitudo vektor mentah) dalam mikroTesla.
@@ -100,6 +104,7 @@ class MagnetometerSample {
       batteryTempC: (data['batteryTempC'] as num).toDouble(),
       isCharging: data['isCharging'] as bool,
       isScreenOn: data['isScreenOn'] as bool,
+      pressureHpa: (data['pressureHpa'] as num?)?.toDouble() ?? -1.0,
     );
   }
 
@@ -118,6 +123,7 @@ class MagnetometerSample {
       'batteryTempC': batteryTempC,
       'isCharging': isCharging,
       'isScreenOn': isScreenOn,
+      'pressureHpa': pressureHpa,
     };
   }
 

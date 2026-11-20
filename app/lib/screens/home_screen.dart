@@ -17,6 +17,7 @@ import 'calibration_screen.dart';
 import 'noise_test_screen.dart';
 import 'station_survey_screen.dart';
 import 'survey_quality_report_screen.dart';
+import 'room_thermometer_screen.dart';
 import 'settings_screen.dart';
 
 /// Layar utama: menampilkan data magnetometer real-time dan metrik instrumen
@@ -566,7 +567,27 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 8),
 
-        // Menu 7: Pengaturan Aplikasi & Manajemen Data
+        // Menu 7: Termometer Suhu Ruangan & Udara (Digital Thermometer)
+        _buildNavCard(
+          theme: theme,
+          title: 'Termometer Suhu Ruangan & Udara',
+          subtitle: 'Pengukur suhu instan, kelembaban, tekanan barometer, & detektor hawa panas terfokus',
+          icon: Icons.device_thermostat,
+          color: Colors.deepOrangeAccent,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => RoomThermometerScreen(
+                  service: _magnetometerService,
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+
+        // Menu 8: Pengaturan Aplikasi & Manajemen Data
         _buildNavCard(
           theme: theme,
           title: 'Pengaturan & Manajemen Data',

@@ -19,6 +19,17 @@ Semua perubahan penting dicatat di sini.
 - Pembaruan tampilan beranda `HomeScreen` dengan menerapkan koreksi bias hard-iron (`calibratedTotalFieldNt` atau profil kalibrasi aktif dari database) pada meteran jarum analog dan grafik gelombang real-time sehingga di udara bebas nilai terbaca normal di zona hijau (~42.000–46.000 nT) (#47)
 
 ### Ditambahkan
+- Layar khusus mandiri Termometer Suhu Ruangan & Detektor Hawa Udara (`RoomThermometerScreen`) yang dapat diakses instan dari Beranda Utama tanpa memerlukan pembuatan proyek survei atau titik koordinat (#59)
+- Widget tabung termometer cairan kaca visual (`LiquidThermometerWidget`) dengan animasi tinggi kolom merkuri halus dan refleksi highlight kaca 3D yang berubah warna sesuai tingkat suhu dan kenyamanan (#59)
+- Pemilih mode ganda instan: Mode Dalam Ruangan (Indoor) dengan kompensasi disipasi termal perangkat dan Mode Cuaca Luar (Outdoor) dengan adaptasi pendinginan konveksi udara (#59)
+- Saklar toggle cepat konversi satuan suhu (°C / °F) pada AppBar dan Hero Card (#59)
+- Grid 4 parameter iklim lingkungan real-time: Kelembaban Udara (RH %), Tekanan Atmosfer Barometer (hPa), Radiasi Medan Elektromagnetik EMF (µT), dan Suhu Sensor Chipset/Baterai HP (°C) (#59)
+- Detektor Hawa Panas Terfokus (*Joule Heating & Hotspot Scanner*) yang mengidentifikasi radiasi termal dari kabel listrik dinding berdaya tinggi atau adaptor saat fluks magnetik EMF terukur melebihi 60 µT (#59)
+- Penggeser kalibrasi manual offset suhu ruangan (rentang ±3.0 °C dengan resolusi 0.1 °C) dan tombol reset instan untuk penyesuaian terhadap termometer referensi dinding (#59)
+- Kartu panduan pengukuran akurat berbasis riset geofisika smartphone (Overeem et al., 2013; He et al., 2020) (#59)
+- Integrasi pendukung sensor barometer (`Sensor.TYPE_PRESSURE`) pada plugin native Android Kotlin `MagnetometerPlugin.kt` dan model data `MagnetometerSample` (#59)
+- Integrasi kartu navigasi termometer ruangan pada dashboard `HomeScreen` (#59)
+- Layanan perhitungan iklim murni `RoomClimateService` dan suite pengujian unit/widget komprehensif 100% lulus (#59)
 - Kartu Ringkasan Otomatis Bahasa Manusia (*Smart Room Summary*) pada `AnomalyMapScreen` yang secara cerdas mendeteksi zona paling tenang (medan terendah) dan zona paling kuat/dinding, menghitung selisih variasi medan dalam µT, serta memberikan kesimpulan praktis ramah awam untuk tata ruang dan relaksasi (#57)
 - Panel analisis bawah interaktif pada `AnomalyMapScreen` dengan pemilih tab ChoiceChip ("Ringkasan Ruangan" vs "Rincian Titik #N") dan tombol ciutkan/bentangkan (*collapse/expand*) agar tampilan visual peta 2D tetap lega (#57)
 - Layar Pengaturan & Preferensi baru (`SettingsScreen`) dengan opsi satuan utama (µT vs nT), slider kustomisasi ambang batas deteksi anomali, ringkasan kuota statistik database lokal, info spesifikasi chip sensor, dan tombol Reset Pabrik Database (#55)

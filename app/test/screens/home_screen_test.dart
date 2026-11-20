@@ -127,4 +127,23 @@ void main() {
     mockService.close();
     await testDb.close();
   });
+
+  testWidgets(
+      'HomeScreen memiliki kartu navigasi Termometer Suhu Ruangan & Udara',
+      (tester) async {
+    final mockService = MockMagnetometerService();
+    final testDb = AppDatabase(NativeDatabase.memory());
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(service: mockService, database: testDb),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Termometer Suhu Ruangan & Udara'), findsOneWidget);
+
+    mockService.close();
+    await testDb.close();
+  });
 }

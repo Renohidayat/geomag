@@ -25,6 +25,10 @@ class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private var isUncalibrated: Boolean = true
     private var targetDelayUs: Int = SensorManager.SENSOR_DELAY_FASTEST
 
+    private var pressureSensor: Sensor? = null
+    private var pressureListener: SensorEventListener? = null
+    private var lastPressureHpa: Double = -1.0
+
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
         sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -108,6 +112,11 @@ class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         sensorEventListener?.let { sensorManager?.unregisterListener(it) }
         sensorEventListener = null
         activeSensor = null
+
+        pressureListener?.let { sensorManager?.unregisterListener(it) }
+        pressureListener = null
+        pressureSensor = null
+        lastPressureHpa = -1.0
     }
 
     private inner class MagnetometerStreamHandler : EventChannel.StreamHandler {
@@ -131,6 +140,20 @@ class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             } else {
                 events.error("NO_SENSOR", "Magnetometer tidak tersedia di perangkat ini", null)
                 return
+            }
+
+            val pressure = sm.getDefaultSensor(Sensor.TYPE_PRESSURE)
+            if (pressure != null) {
+                pressureSensor = pressure
+                pressureListener = object : SensorEventListener {
+                    override fun onSensorChanged(event: SensorEvent) {
+                        if (event.values.isNotEmpty()) {
+                            lastPressureHpa = event.values[0].toDouble()
+                        }
+                    }
+                    override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
+                }
+                sm.registerListener(pressureListener, pressureSensor, SensorManager.SENSOR_DELAY_NORMAL)
             }
 
             sensorEventListener = object : SensorEventListener {
@@ -159,6 +182,7 @@ class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                     data["batteryTempC"] = getBatteryTemperature()
                     data["isCharging"] = isCharging()
                     data["isScreenOn"] = isScreenOn()
+                    data["pressureHpa"] = lastPressureHpa
 
                     events.success(data)
                 }
