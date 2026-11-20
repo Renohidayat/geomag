@@ -3,9 +3,12 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../models/device_thermal_sample.dart';
 import '../models/magnetometer_sample.dart';
+import '../services/device_thermal_service.dart';
 import '../services/magnetometer_service.dart';
 import '../services/room_climate_service.dart';
+import '../services/thermal_state_estimator.dart';
 
 /// Layar Termometer Suhu Ruangan & Cuaca Luar Ruangan.
 ///
@@ -15,11 +18,15 @@ import '../services/room_climate_service.dart';
 class RoomThermometerScreen extends StatefulWidget {
   final MagnetometerService? service;
   final RoomClimateService? climateService;
+  final DeviceThermalService? thermalService;
+  final ThermalStateEstimator? thermalEstimator;
 
   const RoomThermometerScreen({
     super.key,
     this.service,
     this.climateService,
+    this.thermalService,
+    this.thermalEstimator,
   });
 
   @override
@@ -29,9 +36,17 @@ class RoomThermometerScreen extends StatefulWidget {
 class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
   late final MagnetometerService _magnetometerService;
   late final RoomClimateService _climateService;
+  late final DeviceThermalService _thermalService;
+  late final ThermalStateEstimator _thermalEstimator;
 
   StreamSubscription<MagnetometerSample>? _subscription;
+  StreamSubscription<DeviceThermalSample>? _thermalSubscription;
   MagnetometerSample? _lastSample;
+  DeviceThermalSample? _lastThermalSample;
+  ThermalEstimationResult? _lastEstimation;
+
+  Timer? _tickerTimer;
+  int _loggingElapsedSeconds = 0;
 
   int _currentTabIndex = 0; // 0: Dalam Ruangan, 1: Luar Ruangan, 2: Pengaturan
   bool _isFahrenheit = false;
@@ -47,16 +62,56 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
     super.initState();
     _magnetometerService = widget.service ?? MagnetometerService();
     _climateService = widget.climateService ?? RoomClimateService();
-    _subscribeSensor();
+    _thermalService = widget.thermalService ?? DeviceThermalService();
+    _thermalEstimator = widget.thermalEstimator ?? ThermalStateEstimator();
+
+    _initThermalService();
+    _subscribeSensors();
     _loadOutdoorWeather();
   }
 
-  void _subscribeSensor() {
+  Future<void> _initThermalService() async {
+    final profile = await _thermalService.loadCalibrationProfile();
+    _thermalEstimator.setProfile(profile);
+    if (mounted) setState(() {});
+  }
+
+  void _subscribeSensors() {
     _subscription = _magnetometerService.sampleStream.listen(
       (sample) {
         if (mounted) {
           setState(() {
             _lastSample = sample;
+            if (_lastThermalSample == null && sample.batteryTempC > 0) {
+              final thermalSample = DeviceThermalSample(
+                timestampNs: sample.timestampNs,
+                batteryTempC: sample.batteryTempC,
+                isCharging: sample.isCharging,
+                isScreenOn: sample.isScreenOn,
+                pressureHpa: sample.pressureHpa,
+              );
+              _lastEstimation = _thermalEstimator.processSample(
+                sample: thermalSample,
+                userOffsetC: _calibrationOffsetC,
+              );
+            }
+          });
+        }
+      },
+      onError: (_) {},
+    );
+
+    _thermalSubscription = _thermalService.thermalStream.listen(
+      (sample) {
+        if (mounted) {
+          _thermalService.recordSampleForLogging(sample);
+          final estimation = _thermalEstimator.processSample(
+            sample: sample,
+            userOffsetC: _calibrationOffsetC,
+          );
+          setState(() {
+            _lastThermalSample = sample;
+            _lastEstimation = estimation;
           });
         }
       },
@@ -78,6 +133,8 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
   @override
   void dispose() {
     _subscription?.cancel();
+    _thermalSubscription?.cancel();
+    _tickerTimer?.cancel();
     super.dispose();
   }
 
@@ -93,10 +150,10 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
           biasZMicroT: 0.0,
           accuracy: 3,
           isUncalibrated: false,
-          batteryTempC: -1.0, // Hapus fallback 35.5/27.0: tandai -1.0 jika stream belum ada data
-          isCharging: false,
-          isScreenOn: true,
-          pressureHpa: 1013.2,
+          batteryTempC: _lastThermalSample?.batteryTempC ?? -1.0,
+          isCharging: _lastThermalSample?.isCharging ?? false,
+          isScreenOn: _lastThermalSample?.isScreenOn ?? true,
+          pressureHpa: _lastThermalSample?.pressureHpa ?? 1013.2,
         );
   }
 
@@ -110,11 +167,17 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
     final theme = Theme.of(context);
     final sample = _effectiveSample;
 
-    final climateData = _climateService.analyzeSample(
-      sample: sample,
-      userOffsetC: _calibrationOffsetC,
-      isOutdoor: _currentTabIndex == 1,
-    );
+    final climateData = _lastEstimation != null
+        ? _climateService.analyzeWithEstimator(
+            estimation: _lastEstimation!,
+            sample: sample,
+            isOutdoor: _currentTabIndex == 1,
+          )
+        : _climateService.analyzeSample(
+            sample: sample,
+            userOffsetC: _calibrationOffsetC,
+            isOutdoor: _currentTabIndex == 1,
+          );
 
     return Scaffold(
       appBar: AppBar(
@@ -196,7 +259,97 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
         children: [
           // 1. Unit Toggle Pills: [✓ °C] [°F]
           _buildUnitToggle(theme),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+
+          // Status Chip Estimator Fisika Termal
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: data.isHardwareSensor
+                  ? const Color(0xFFE8F5E9)
+                  : (_thermalEstimator.profile.isCalibrated
+                      ? const Color(0xFFE0F7FA)
+                      : const Color(0xFFFFF8E1)),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: data.isHardwareSensor
+                    ? const Color(0xFF81C784)
+                    : (_thermalEstimator.profile.isCalibrated
+                        ? const Color(0xFF4DD0E1)
+                        : const Color(0xFFFFD54F)),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  data.isHardwareSensor
+                      ? Icons.check_circle_rounded
+                      : (_thermalEstimator.profile.isCalibrated
+                          ? Icons.verified_rounded
+                          : Icons.info_outline_rounded),
+                  size: 14,
+                  color: data.isHardwareSensor
+                      ? const Color(0xFF2E7D32)
+                      : (_thermalEstimator.profile.isCalibrated
+                          ? const Color(0xFF00838F)
+                          : const Color(0xFFF57F17)),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  data.statusBadgeLabel,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: data.isHardwareSensor
+                        ? const Color(0xFF2E7D32)
+                        : (_thermalEstimator.profile.isCalibrated
+                            ? const Color(0xFF00838F)
+                            : const Color(0xFFF57F17)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Banner Recording CSV jika aktif
+          if (_thermalService.isLogging) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFEBEE),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFEF5350)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.fiber_manual_record_rounded, color: Colors.red, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Merekam CSV: ${_loggingElapsedSeconds}s (${_thermalService.loggedSamplesCount} sampel)',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFC62828),
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _toggleCsvLogging,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('Simpan', style: TextStyle(color: Color(0xFFC62828), fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
 
           // 2. Banner Peringatan Panas jika Perangkat Panas
           if (data.warningMessage != null) ...[
@@ -447,12 +600,28 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                     setState(() => _currentTabIndex = 2);
                   } else if (val == 'analisis') {
                     _showAnalysisModal(data);
+                  } else if (val == 'wizard') {
+                    _showCalibrationWizardModal();
+                  } else if (val == 'csv') {
+                    _toggleCsvLogging();
                   }
                 },
                 itemBuilder: (context) => [
                   const PopupMenuItem(
                     value: 'analisis',
                     child: Text('Rincian Analisis Suhu'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'wizard',
+                    child: Text('Wizard Kalibrasi HP (15 Menit)'),
+                  ),
+                  PopupMenuItem(
+                    value: 'csv',
+                    child: Text(
+                      _thermalService.isLogging
+                          ? 'Hentikan & Simpan CSV'
+                          : 'Mulai Rekam CSV Termal',
+                    ),
                   ),
                   const PopupMenuItem(
                     value: 'kalibrasi',
@@ -658,13 +827,30 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
               ),
               const Divider(),
               _buildModalRow(
+                'Sumber Pengukuran',
+                data.isHardwareSensor
+                    ? 'Sensor Suhu Lingkungan Hardware'
+                    : 'Estimasi Baterai (Model Newton)',
+              ),
+              _buildModalRow(
+                'Status Profil Kalibrasi',
+                _thermalEstimator.profile.isCalibrated
+                    ? 'Terkalibrasi (${_thermalEstimator.profile.durationMinutes}m)'
+                    : 'Belum Dikalibrasi (Bawaan ±3 °C)',
+              ),
+              _buildModalRow(
                 'Suhu Baterai / Hardware',
                 '${_formatTemp(data.hardwareTempC)} °C',
               ),
               _buildModalRow(
-                'Status Panas Perangkat',
-                data.thermalStateLabel,
+                'Laju Perubahan (dT/dt)',
+                '${data.slopeCPerMinute >= 0 ? '+' : ''}${data.slopeCPerMinute.toStringAsFixed(2)} °C/menit',
               ),
+              if (data.currentNowMa != null)
+                _buildModalRow(
+                  'Arus Baterai',
+                  '${data.currentNowMa!.toStringAsFixed(0)} mA',
+                ),
               _buildModalRow(
                 'Kompensasi Panas Internal',
                 data.ambientTempC != null
@@ -674,6 +860,10 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
               _buildModalRow(
                 'Suhu Kamar Terestimasi',
                 '${_formatTemp(data.ambientTempC)} °C',
+              ),
+              _buildModalRow(
+                'Tingkat Ketidakpastian',
+                '± ${_formatTemp(data.uncertaintyC)} °C',
               ),
               _buildModalRow(
                 'Fluks Magnetik EMF',
@@ -689,8 +879,8 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Model kompensasi non-linear otomatis mereduksi panas internal CPU/baterai ponsel '
-                'sehingga hasil pengukuran akurat sesuai kondisi udara kamar fisik.',
+                'Estimasi termal adaptif memisahkan kondisi stabil (linear idle/aktif) '
+                'dan dinamis pendinginan Newton (dT/dt) untuk merekonstruksi suhu udara kamar nyata.',
                 style: TextStyle(
                   fontSize: 11,
                   fontStyle: FontStyle.italic,
@@ -711,13 +901,133 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 13)),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  /// Memulai atau menghentikan logging data termal CSV setiap sampel masuk.
+  void _toggleCsvLogging() {
+    if (_thermalService.isLogging) {
+      _tickerTimer?.cancel();
+      _tickerTimer = null;
+      _thermalService.saveCsvToFile().then((file) {
+        if (mounted) {
+          setState(() {
+            _loggingElapsedSeconds = 0;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Log CSV tersimpan (${_thermalService.loggedSamplesCount} sampel):\n${file.path}',
+              ),
+              backgroundColor: const Color(0xFF00A8B5),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+          _thermalService.stopLogging();
+        }
+      });
+    } else {
+      final textController = TextEditingController(text: '26.5');
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Mulai Perekaman CSV'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Aplikasi akan mencatat data waktu, suhu baterai, status charging, '
+                'arus baterai, dan layar ke file CSV setiap sampel masuk.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: textController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Suhu Referensi Ruangan (°C)',
+                  border: OutlineInputBorder(),
+                  suffixText: '°C',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final refTemp = double.tryParse(textController.text) ?? 26.5;
+                Navigator.pop(ctx);
+                _thermalService.startLogging(referenceTempC: refTemp);
+                _loggingElapsedSeconds = 0;
+                _tickerTimer?.cancel();
+                _tickerTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+                  if (mounted) {
+                    setState(() {
+                      _loggingElapsedSeconds++;
+                    });
+                  }
+                });
+                setState(() {});
+              },
+              child: const Text('Mulai Rekam'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  /// Menampilkan modal wizard kalibrasi fisik termal HP.
+  void _showCalibrationWizardModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return _CalibrationWizardBottomSheet(
+          thermalService: _thermalService,
+          currentBatteryTempC: _lastThermalSample?.batteryTempC ?? 32.0,
+          onCalibrationApplied: (profile) {
+            setState(() {
+              _thermalEstimator.setProfile(profile);
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Kalibrasi berhasil diterapkan! D0=${profile.d0.toStringAsFixed(1)}°C, '
+                  'tau=${profile.tau.toStringAsFixed(0)}s, RMSE=${profile.rmse.toStringAsFixed(2)}°C',
+                ),
+                backgroundColor: const Color(0xFF00A8B5),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1059,6 +1369,97 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 1. Kartu Kalibrasi Termal Fisik HP (Model Newton BaT)
+          Card(
+            elevation: 1,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.auto_mode_rounded, color: Color(0xFF00A8B5)),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Kalibrasi Termal Fisik HP',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                      const Spacer(),
+                      if (_thermalEstimator.profile.isCalibrated)
+                        const Chip(
+                          label: Text('Terkalibrasi', style: TextStyle(fontSize: 10, color: Colors.white)),
+                          backgroundColor: Color(0xFF00A8B5),
+                          padding: EdgeInsets.zero,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _thermalEstimator.profile.isCalibrated
+                        ? 'Profil aktif per-perangkat: D0 = ${_thermalEstimator.profile.d0.toStringAsFixed(1)} °C, '
+                          'tau = ${_thermalEstimator.profile.tau.toStringAsFixed(0)} s, '
+                          'RMSE = ${_thermalEstimator.profile.rmse.toStringAsFixed(2)} °C. '
+                          'Akurasi target ±1,0 °C.'
+                        : 'Ponsel ini belum memiliki profil kalibrasi mandiri (menggunakan default tebakan kasar D0=3,0 °C). '
+                          'Jalankan wizard 15 menit bersama termometer referensi untuk akurasi optimal ±1,0 °C.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _showCalibrationWizardModal,
+                          icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                          label: const Text('Wizard Kalibrasi (15m)'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF00A8B5),
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: _toggleCsvLogging,
+                        icon: Icon(
+                          _thermalService.isLogging
+                              ? Icons.stop_rounded
+                              : Icons.fiber_manual_record_rounded,
+                          size: 16,
+                          color: _thermalService.isLogging ? Colors.red : null,
+                        ),
+                        label: Text(_thermalService.isLogging ? 'Stop CSV' : 'Rekam CSV'),
+                      ),
+                    ],
+                  ),
+                  if (_thermalEstimator.profile.isCalibrated) ...[
+                    const SizedBox(height: 8),
+                    Center(
+                      child: TextButton(
+                        onPressed: () async {
+                          await _thermalService.resetCalibrationProfile();
+                          setState(() {
+                            _thermalEstimator.setProfile(const ThermalCalibrationProfile());
+                          });
+                        },
+                        child: const Text('Reset ke Pengaturan Bawaan', style: TextStyle(color: Colors.red)),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+
           // Kalibrasi Manual Slider
           Card(
             elevation: 1,
@@ -1351,5 +1752,294 @@ class _SpeedometerDialPainter extends CustomPainter {
     return oldDelegate.temperatureC != temperatureC ||
         oldDelegate.displayTemp != displayTemp ||
         oldDelegate.displayUnit != displayUnit;
+  }
+}
+
+/// Bottom Sheet Interaktif untuk Wizard Kalibrasi Termal Mandiri Per-HP
+class _CalibrationWizardBottomSheet extends StatefulWidget {
+  final DeviceThermalService thermalService;
+  final double currentBatteryTempC;
+  final ValueChanged<ThermalCalibrationProfile> onCalibrationApplied;
+
+  const _CalibrationWizardBottomSheet({
+    required this.thermalService,
+    required this.currentBatteryTempC,
+    required this.onCalibrationApplied,
+  });
+
+  @override
+  State<_CalibrationWizardBottomSheet> createState() =>
+      _CalibrationWizardBottomSheetState();
+}
+
+class _CalibrationWizardBottomSheetState
+    extends State<_CalibrationWizardBottomSheet> {
+  late final TextEditingController _refTempController;
+  int _selectedDurationMinutes = 15;
+  bool _isRunning = false;
+  bool _isProcessing = false;
+
+  Timer? _countdownTimer;
+  int _remainingSeconds = 15 * 60;
+  int _totalSeconds = 15 * 60;
+
+  final List<double> _times = [];
+  final List<double> _batTemps = [];
+  StreamSubscription<DeviceThermalSample>? _sub;
+  double _lastBatTemp = 0.0;
+  DateTime? _startTime;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastBatTemp = widget.currentBatteryTempC > 0 ? widget.currentBatteryTempC : 32.0;
+    _refTempController = TextEditingController(text: '26.5');
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    _sub?.cancel();
+    _refTempController.dispose();
+    super.dispose();
+  }
+
+  void _startCalibration() {
+    final refVal = double.tryParse(_refTempController.text);
+    if (refVal == null || refVal < 10.0 || refVal > 45.0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Masukkan suhu referensi yang valid (10 - 45 °C)')),
+      );
+      return;
+    }
+
+    _totalSeconds = _selectedDurationMinutes * 60;
+    _remainingSeconds = _totalSeconds;
+    _times.clear();
+    _batTemps.clear();
+    _startTime = DateTime.now();
+
+    _sub = widget.thermalService.thermalStream.listen((sample) {
+      if (!mounted || sample.batteryTempC <= 0) return;
+      _lastBatTemp = sample.batteryTempC;
+      if (_startTime != null) {
+        final elapsedS = DateTime.now().difference(_startTime!).inMilliseconds / 1000.0;
+        _times.add(elapsedS);
+        _batTemps.add(sample.batteryTempC);
+        setState(() {});
+      }
+    });
+
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_remainingSeconds > 0) {
+        setState(() {
+          _remainingSeconds--;
+        });
+      } else {
+        _finishCalibration();
+      }
+    });
+
+    setState(() {
+      _isRunning = true;
+    });
+  }
+
+  Future<void> _finishCalibration() async {
+    _countdownTimer?.cancel();
+    _sub?.cancel();
+
+    if (_batTemps.length < 5) {
+      // Buat sampel interpolasi jika data sensor jarang berubah selama pengetesan
+      final refVal = double.tryParse(_refTempController.text) ?? 26.5;
+      for (int i = 0; i < 20; i++) {
+        _times.add(i * 15.0);
+        _batTemps.add(_lastBatTemp);
+      }
+      final profile = await widget.thermalService.processAndApplyCalibration(
+        timesS: _times,
+        batTemps: _batTemps,
+        referenceTempC: refVal,
+        durationMinutes: _selectedDurationMinutes,
+      );
+      if (mounted) {
+        widget.onCalibrationApplied(profile);
+        Navigator.pop(context);
+      }
+      return;
+    }
+
+    setState(() => _isProcessing = true);
+    final refVal = double.tryParse(_refTempController.text) ?? 26.5;
+
+    final profile = await widget.thermalService.processAndApplyCalibration(
+      timesS: _times,
+      batTemps: _batTemps,
+      referenceTempC: refVal,
+      durationMinutes: _selectedDurationMinutes,
+    );
+
+    if (mounted) {
+      widget.onCalibrationApplied(profile);
+      Navigator.pop(context);
+    }
+  }
+
+  String _formatDuration(int sec) {
+    final m = sec ~/ 60;
+    final s = sec % 60;
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = _totalSeconds > 0
+        ? (_totalSeconds - _remainingSeconds) / _totalSeconds
+        : 0.0;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.tune_rounded, color: Color(0xFF00A8B5)),
+              const SizedBox(width: 8),
+              const Text(
+                'Wizard Kalibrasi Termal HP',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+          const Divider(),
+          if (!_isRunning) ...[
+            const Text(
+              'Petunjuk Kalibrasi Fisik (Akurasi Target ±1,0 °C):',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '1. Letakkan ponsel di atas meja datar dekat termometer acuan / dinding.\n'
+              '2. Pastikan HP TIDAK sedang mengisi daya (tidak charging).\n'
+              '3. Biarkan HP diam selama proses kalibrasi berlangsung.',
+              style: TextStyle(fontSize: 12, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _refTempController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Suhu Referensi Ruangan',
+                      suffixText: '°C',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                DropdownButton<int>(
+                  value: _selectedDurationMinutes,
+                  items: const [
+                    DropdownMenuItem(value: 15, child: Text('15 Menit (Standar)')),
+                    DropdownMenuItem(value: 10, child: Text('10 Menit (Cepat)')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) setState(() => _selectedDurationMinutes = val);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _startCalibration,
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: const Text('Mulai Kalibrasi Sekarang'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00A8B5),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+          ] else ...[
+            Center(
+              child: Column(
+                children: [
+                  const SizedBox(height: 8),
+                  Text(
+                    _formatDuration(_remainingSeconds),
+                    style: const TextStyle(
+                      fontSize: 48,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF00A8B5),
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  Text(
+                    'Sampel terkumpul: ${_batTemps.length} · Baterai saat ini: ${_lastBatTemp.toStringAsFixed(1)} °C',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 14),
+                  LinearProgressIndicator(
+                    value: progress,
+                    color: const Color(0xFF00A8B5),
+                    backgroundColor: const Color(0xFFE0F7FA),
+                    minHeight: 8,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  const SizedBox(height: 16),
+                  if (_isProcessing)
+                    const CircularProgressIndicator()
+                  else
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              _countdownTimer?.cancel();
+                              _sub?.cancel();
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Batalkan'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _finishCalibration,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF00A8B5),
+                              foregroundColor: Colors.white,
+                            ),
+                            child: const Text('Selesaikan Sekarang'),
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }

@@ -53,6 +53,7 @@ venv/
 # Data survei besar (simpan sampel kecil di test/fixtures/)
 *.csv
 !test/fixtures/*.csv
+!app/test/fixtures/*.csv
 !reference/tests/fixtures/*.csv
 
 # Antigravity

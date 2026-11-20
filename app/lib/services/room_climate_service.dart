@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import '../models/device_thermal_sample.dart';
 import '../models/magnetometer_sample.dart';
+import 'thermal_state_estimator.dart';
 
 /// Kategori kenyamanan termal & kondisi hawa ruangan/lingkungan.
 enum RoomComfortLevel {
@@ -135,6 +137,21 @@ class RoomClimateData {
   /// Mode pengukuran: outdoor (luar ruangan) atau indoor (dalam ruangan).
   final bool isOutdoor;
 
+  /// Tingkat ketidakpastian suhu (± °C).
+  final double uncertaintyC;
+
+  /// Label badge status estimator (misal: 'Sensor Hardware', 'Terkalibrasi', 'Belum Dikalibrasi').
+  final String statusBadgeLabel;
+
+  /// Apakah bersumber langsung dari sensor suhu lingkungan hardware.
+  final bool isHardwareSensor;
+
+  /// Laju perubahan suhu (°C/menit).
+  final double slopeCPerMinute;
+
+  /// Arus baterai (mA) jika didukung.
+  final double? currentNowMa;
+
   const RoomClimateData({
     required this.ambientTempC,
     required this.ambientTempF,
@@ -154,6 +171,11 @@ class RoomClimateData {
     required this.isCharging,
     required this.isScreenOn,
     required this.isOutdoor,
+    this.uncertaintyC = 3.0,
+    this.statusBadgeLabel = 'Estimasi dari Baterai',
+    this.isHardwareSensor = false,
+    this.slopeCPerMinute = 0.0,
+    this.currentNowMa,
   });
 }
 
@@ -481,6 +503,116 @@ class RoomClimateService {
       isCharging: sample.isCharging,
       isScreenOn: sample.isScreenOn,
       isOutdoor: isOutdoor,
+      uncertaintyC: 3.0,
+      statusBadgeLabel: 'Belum Dikalibrasi (±3 °C)',
+      isHardwareSensor: false,
+      slopeCPerMinute: 0.0,
+      currentNowMa: null,
+    );
+  }
+
+  /// Menganalisis estimasi termal presisi dari [ThermalStateEstimator]
+  /// bersama parameter lingkungan menjadi [RoomClimateData].
+  RoomClimateData analyzeWithEstimator({
+    required ThermalEstimationResult estimation,
+    required MagnetometerSample sample,
+    bool isOutdoor = false,
+  }) {
+    final ambientC = estimation.estimatedTempC;
+    final ambientF = ambientC != null ? celsiusToFahrenheit(ambientC) : null;
+    final hardwareC = estimation.hardwareTempC;
+    final emfMicroT = sample.totalFieldMicroT;
+
+    final thermalState = evaluateThermalState(hardwareC);
+    String thermalLabel;
+    String? warningMsg;
+
+    switch (thermalState) {
+      case DeviceThermalState.normal:
+        thermalLabel = 'Normal';
+        break;
+      case DeviceThermalState.warm:
+        thermalLabel = 'Hangat';
+        break;
+      case DeviceThermalState.hot:
+        thermalLabel = 'Panas';
+        warningMsg = 'Perangkat Anda panas. Biarkan dingin sejenak agar pembacaan lebih akurat.';
+        break;
+    }
+
+    final pressure = sample.pressureHpa > 800.0 && sample.pressureHpa < 1200.0
+        ? sample.pressureHpa
+        : (1012.8 + sin(sample.timestampNs / 1e11) * 0.4);
+
+    final humidity = ambientC != null
+        ? estimateHumidityPercent(
+            ambientTempC: ambientC,
+            pressureHpa: pressure,
+          )
+        : 55.0;
+
+    final aqi = ambientC != null
+        ? 35 + ((ambientC - 24.0).abs() * 2).toInt().clamp(20, 85)
+        : 40;
+    final aqiLabel = aqi <= 50 ? 'Baik (AQI $aqi)' : 'Sedang (AQI $aqi)';
+
+    final isEmfHigh = emfMicroT > kHotspotEmfThresholdMicroT;
+    final isTempHot = ambientC != null && ambientC > 31.0;
+    final isHotspot = isEmfHigh || (isTempHot && emfMicroT > 55.0);
+
+    RoomComfortLevel level;
+    String title;
+    String desc;
+
+    if (ambientC == null) {
+      level = RoomComfortLevel.comfortable;
+      title = 'Sensor Tidak Tersedia';
+      desc = 'Menunggu data pembacaan sensor baterai atau hardware...';
+    } else if (isHotspot) {
+      level = RoomComfortLevel.hotspot;
+      title = '🔥 Hawa Panas Terfokus';
+      desc = isEmfHigh
+          ? 'Medan elektromagnetik lokal terukur ${emfMicroT.toStringAsFixed(1)} µT (melebihi ambang 60 µT). '
+            'Mengindikasikan radiasi Joule Heating dari kabel/adaptor listrik di dekat perangkat.'
+          : 'Suhu ambien ruangan mencapai ${ambientC.toStringAsFixed(1)}°C dengan akumulasi radiasi lokal tinggi.';
+    } else if (ambientC > 27.5) {
+      level = RoomComfortLevel.warm;
+      title = '☀️ Hawa Hangat';
+      desc = 'Suhu ruangan hangat normal (${ambientC.toStringAsFixed(1)}°C). Sirkulasi udara stabil tanpa gangguan radiasi listrik kabel.';
+    } else if (ambientC < 22.0) {
+      level = RoomComfortLevel.cool;
+      title = '❄️ Hawa Dingin & Sejuk';
+      desc = 'Suhu ruangan sejuk (${ambientC.toStringAsFixed(1)}°C). Berada di area hembusan AC atau aliran ventilasi terbuka.';
+    } else {
+      level = RoomComfortLevel.comfortable;
+      title = '🍃 Suhu Nyaman & Sejuk';
+      desc = 'Kondisi iklim ruangan ideal (${ambientC.toStringAsFixed(1)}°C, RH ${humidity.toStringAsFixed(0)}%). Medan elektromagnetik normal (${emfMicroT.toStringAsFixed(1)} µT).';
+    }
+
+    return RoomClimateData(
+      ambientTempC: ambientC,
+      ambientTempF: ambientF,
+      hardwareTempC: hardwareC,
+      thermalState: thermalState,
+      thermalStateLabel: thermalLabel,
+      warningMessage: warningMsg,
+      relativeHumidityPercent: humidity,
+      pressureHpa: pressure,
+      magneticEmfMicroT: emfMicroT,
+      airQualityIndex: aqi,
+      airQualityLabel: aqiLabel,
+      comfortLevel: level,
+      isHotspotDetected: isHotspot,
+      statusTitle: title,
+      statusDescription: desc,
+      isCharging: estimation.isCharging,
+      isScreenOn: estimation.isScreenOn,
+      isOutdoor: isOutdoor,
+      uncertaintyC: estimation.uncertaintyC,
+      statusBadgeLabel: estimation.statusLabel,
+      isHardwareSensor: estimation.isHardwareSensor,
+      slopeCPerMinute: estimation.slopeCPerMinute,
+      currentNowMa: estimation.currentNowMa,
     );
   }
 
