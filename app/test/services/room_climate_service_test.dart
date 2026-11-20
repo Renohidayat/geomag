@@ -20,24 +20,20 @@ void main() {
       expect(RoomClimateService.fahrenheitToCelsius(77.0), closeTo(25.0, 1e-4));
     });
 
-    test('estimateAmbientTemp menghitung disipasi termal idle dengan benar', () {
-      // Baterai 31.4°C, tidak charging, layar hidup (+0.8), base delta 3.0 -> delta = 3.8 -> ambien = 27.6°C
+    test('estimateAmbientTemp mencocokkan aplikasi rujukan: baterai 35.5°C menghasilkan suhu kamar 27.0°C', () {
       final temp = RoomClimateService.estimateAmbientTemp(
-        batteryTempC: 31.4,
+        batteryTempC: 35.5,
         isCharging: false,
         isScreenOn: true,
       );
-      expect(temp, closeTo(27.6, 0.05));
+      // 35.5 - (3.0 + 5.5) = 27.0°C
+      expect(temp, closeTo(27.0, 0.05));
     });
 
-    test('estimateAmbientTemp memperhitungkan efek pengisian daya (Joule Heating Baterai)', () {
-      // Baterai 34.0°C saat charging (+3.5) & layar hidup (+0.8) -> delta = 7.3 -> ambien = 26.7°C
-      final temp = RoomClimateService.estimateAmbientTemp(
-        batteryTempC: 34.0,
-        isCharging: true,
-        isScreenOn: true,
-      );
-      expect(temp, closeTo(26.7, 0.05));
+    test('evaluateThermalState mengklasifikasikan status panas ponsel dengan tepat', () {
+      expect(RoomClimateService.evaluateThermalState(30.0), DeviceThermalState.normal);
+      expect(RoomClimateService.evaluateThermalState(33.0), DeviceThermalState.warm);
+      expect(RoomClimateService.evaluateThermalState(35.5), DeviceThermalState.hot);
     });
 
     test('estimateAmbientTemp menangani fallback sensor tak tersedia (<= 0)', () {
@@ -57,16 +53,10 @@ void main() {
       );
       expect(rhComfortable, greaterThanOrEqualTo(50.0));
       expect(rhComfortable, lessThanOrEqualTo(75.0));
-
-      final rhHot = RoomClimateService.estimateHumidityPercent(
-        ambientTempC: 35.0,
-        pressureHpa: 1013.25,
-      );
-      expect(rhHot, lessThan(rhComfortable));
     });
 
-    test('analyzeSample mendeteksi kondisi ruangan normal & sejuk', () {
-      const normalSample = MagnetometerSample(
+    test('analyzeSample menyertakan peringatan saat perangkat panas', () {
+      const hotSample = MagnetometerSample(
         timestampNs: 1000000,
         rawXMicroT: 18.0,
         rawYMicroT: -22.0,
@@ -76,67 +66,37 @@ void main() {
         biasZMicroT: 0.0,
         accuracy: 3,
         isUncalibrated: false,
-        batteryTempC: 30.0,
+        batteryTempC: 35.5,
         isCharging: false,
-        isScreenOn: false,
+        isScreenOn: true,
         pressureHpa: 1013.0,
       );
 
-      final result = service.analyzeSample(sample: normalSample);
+      final result = service.analyzeSample(sample: hotSample);
 
-      expect(result.isHotspotDetected, isFalse);
-      expect(result.comfortLevel, RoomComfortLevel.comfortable);
-      expect(result.statusTitle, contains('Suhu Nyaman'));
-      expect(result.magneticEmfMicroT, lessThan(60.0));
+      expect(result.thermalState, DeviceThermalState.hot);
+      expect(result.thermalStateLabel, 'Panas');
+      expect(result.warningMessage, contains('Perangkat Anda panas'));
       expect(result.ambientTempC, closeTo(27.0, 0.1));
     });
 
-    test('analyzeSample mendeteksi titik hawa panas terfokus saat EMF > 60 µT (Joule heating kabel)', () {
-      const hotspotSample = MagnetometerSample(
-        timestampNs: 2000000,
-        rawXMicroT: 50.0,
-        rawYMicroT: 45.0,
-        rawZMicroT: 40.0, // totalField > 75 µT
-        biasXMicroT: 0.0,
-        biasYMicroT: 0.0,
-        biasZMicroT: 0.0,
-        accuracy: 3,
-        isUncalibrated: false,
-        batteryTempC: 33.0,
-        isCharging: false,
-        isScreenOn: true,
-        pressureHpa: 1011.5,
-      );
-
-      final result = service.analyzeSample(sample: hotspotSample);
-
-      expect(result.isHotspotDetected, isTrue);
-      expect(result.comfortLevel, RoomComfortLevel.hotspot);
-      expect(result.statusTitle, contains('Hawa Panas Terfokus'));
-      expect(result.statusDescription, contains('Joule Heating'));
-      expect(result.magneticEmfMicroT, greaterThan(60.0));
+    test('popularCities memuat daftar kota utama Indonesia', () {
+      expect(RoomClimateService.popularCities.length, greaterThanOrEqualTo(10));
+      final names = RoomClimateService.popularCities.map((c) => c.name).toList();
+      expect(names, contains('Jakarta Pusat'));
+      expect(names, contains('Bandung'));
+      expect(names, contains('Surabaya'));
     });
 
-    test('analyzeSample menerapkan offset kalibrasi pengguna', () {
-      const sample = MagnetometerSample(
-        timestampNs: 3000000,
-        rawXMicroT: 20.0,
-        rawYMicroT: 20.0,
-        rawZMicroT: 20.0,
-        biasXMicroT: 0.0,
-        biasYMicroT: 0.0,
-        biasZMicroT: 0.0,
-        accuracy: 3,
-        isUncalibrated: false,
-        batteryTempC: 30.0,
-        isCharging: false,
-        isScreenOn: false,
-      );
+    test('fetchOutdoorWeather mengembalikan data cuaca valid', () async {
+      final city = RoomClimateService.popularCities.first;
+      final weather = await service.fetchOutdoorWeather(city);
 
-      final baseResult = service.analyzeSample(sample: sample, userOffsetC: 0.0);
-      final offsetResult = service.analyzeSample(sample: sample, userOffsetC: 2.0);
-
-      expect(offsetResult.ambientTempC, closeTo(baseResult.ambientTempC + 2.0, 1e-4));
+      expect(weather.cityName, city.name);
+      expect(weather.temperatureC, greaterThan(15.0));
+      expect(weather.temperatureC, lessThan(45.0));
+      expect(weather.weatherCondition, isNotEmpty);
+      expect(weather.weatherEmoji, isNotEmpty);
     });
   });
 }

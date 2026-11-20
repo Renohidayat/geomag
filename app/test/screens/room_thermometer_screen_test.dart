@@ -43,7 +43,7 @@ void main() {
       mockService.close();
     });
 
-    testWidgets('Merender tampilan awal termometer ruangan lengkap dengan komponen',
+    testWidgets('Merender tampilan awal termometer mirip rujukan dengan Dial Meter dan kartu metrik',
         (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -52,31 +52,31 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Memeriksa judul AppBar dan subjudul
-      expect(find.text('Termometer Ruangan'), findsOneWidget);
-      expect(find.text('Live Climate & Thermal Scanner'), findsOneWidget);
+      // Memeriksa judul AppBar dan ikon mahkota
+      expect(find.text('Termometer'), findsOneWidget);
+      expect(find.byIcon(Icons.workspace_premium_rounded), findsOneWidget);
 
       // Memeriksa toggle unit
       expect(find.text('°C'), findsWidgets);
       expect(find.text('°F'), findsWidgets);
 
-      // Memeriksa pemilih mode
+      // Memeriksa dial card 'Suhu kamar'
+      expect(find.text('Suhu kamar'), findsOneWidget);
+      expect(find.text('Analisis Suhu'), findsOneWidget);
+
+      // Memeriksa 4 kartu metrik utama
+      expect(find.text('Panas Perangkat'), findsOneWidget);
+      expect(find.text('Baterai'), findsOneWidget);
+      expect(find.text('Kualitas Udara'), findsOneWidget);
+      expect(find.text('Radar Cuaca'), findsOneWidget);
+
+      // Memeriksa Bottom Navigation Bar
       expect(find.text('Dalam Ruangan'), findsOneWidget);
-      expect(find.text('Cuaca Luar'), findsOneWidget);
-
-      // Memeriksa 4 kartu parameter lingkungan
-      expect(find.text('Kelembaban Udara'), findsOneWidget);
-      expect(find.text('Tekanan Barometer'), findsOneWidget);
-      expect(find.text('Medan Magnet EMF'), findsOneWidget);
-      expect(find.text('Suhu Chipset HP'), findsOneWidget);
-
-      // Memeriksa kartu analisis hawa panas & kalibrasi
-      expect(find.text('Detektor Hawa Panas Terfokus'), findsOneWidget);
-      expect(find.text('Kalibrasi Offset Suhu (±3.0 °C)'), findsOneWidget);
-      expect(find.byType(LiquidThermometerWidget), findsOneWidget);
+      expect(find.text('Luar Ruangan'), findsOneWidget);
+      expect(find.text('Pengaturan'), findsOneWidget);
     });
 
-    testWidgets('Toggle unit °C ke °F memperbarui pembacaan suhu',
+    testWidgets('Banner peringatan muncul saat suhu baterai tinggi (Panas)',
         (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -85,7 +85,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Emit sampel dengan suhu baterai 31.8°C (ambien ~28.0°C -> ~82.4°F)
+      // Emit sampel dengan suhu baterai 35.5°C (status Panas)
       mockService.emitSample(
         const MagnetometerSample(
           timestampNs: 1000,
@@ -97,7 +97,7 @@ void main() {
           biasZMicroT: 0.0,
           accuracy: 3,
           isUncalibrated: false,
-          batteryTempC: 31.8,
+          batteryTempC: 35.5,
           isCharging: false,
           isScreenOn: true,
           pressureHpa: 1013.2,
@@ -105,15 +105,27 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Di mode °C (default), mencari '°C'
-      expect(find.text('°C'), findsWidgets);
+      expect(
+        find.text('Perangkat Anda panas. Biarkan dingin sejenak agar pembacaan lebih akurat.'),
+        findsOneWidget,
+      );
+      expect(find.text('Panas'), findsWidgets);
+    });
+
+    testWidgets('Toggle unit °C ke °F memperbarui pembacaan satuan',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoomThermometerScreen(service: mockService),
+        ),
+      );
+      await tester.pumpAndSettle();
 
       // Ketuk toggle '°F'
       final fahrenheitPill = find.text('°F').first;
       await tester.tap(fahrenheitPill);
       await tester.pumpAndSettle();
 
-      // Satuan utama pada hero card sekarang menampilkan '°F'
       expect(find.text('°F'), findsWidgets);
 
       // Ketuk kembali '°C'
@@ -124,24 +136,7 @@ void main() {
       expect(find.text('°C'), findsWidgets);
     });
 
-    testWidgets('Ganti mode Dalam Ruangan ke Cuaca Luar', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: RoomThermometerScreen(service: mockService),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('SUHU RUANGAN'), findsOneWidget);
-
-      // Ketuk 'Cuaca Luar'
-      await tester.tap(find.text('Cuaca Luar'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('CUACA LUAR'), findsOneWidget);
-    });
-
-    testWidgets('Deteksi hawa panas terfokus aktif saat sensor menerima medan EMF tinggi',
+    testWidgets('Pindah ke tab Luar Ruangan dan membuka pemilih kota',
         (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -150,32 +145,61 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Kirim data dengan medan magnet tinggi > 60 µT (misal dekat stopkontak)
-      mockService.emitSample(
-        const MagnetometerSample(
-          timestampNs: 2000,
-          rawXMicroT: 50.0,
-          rawYMicroT: 50.0,
-          rawZMicroT: 50.0, // total > 86 µT
-          biasXMicroT: 0.0,
-          biasYMicroT: 0.0,
-          biasZMicroT: 0.0,
-          accuracy: 3,
-          isUncalibrated: false,
-          batteryTempC: 32.0,
-          isCharging: false,
-          isScreenOn: true,
-          pressureHpa: 1012.0,
+      // Pindah ke tab Luar Ruangan
+      await tester.tap(find.text('Luar Ruangan'));
+      await tester.pumpAndSettle();
+
+      // Memeriksa elemen lokasi
+      expect(find.text('Jakarta Pusat'), findsOneWidget);
+      expect(find.text('Ganti Kota'), findsOneWidget);
+
+      // Ketuk tombol Ganti Kota
+      await tester.tap(find.text('Ganti Kota'));
+      await tester.pumpAndSettle();
+
+      // Memeriksa modal dialog daftar kota muncul
+      expect(find.text('Pilih Kota / Lokasi Cuaca'), findsOneWidget);
+      expect(find.text('Bandung'), findsOneWidget);
+
+      // Pilih kota Bandung
+      await tester.tap(find.text('Bandung'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bandung'), findsOneWidget);
+    });
+
+    testWidgets('Pindah ke tab Pengaturan dan menampilkan slider kalibrasi',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoomThermometerScreen(service: mockService),
         ),
       );
       await tester.pumpAndSettle();
 
-      // Harus menampilkan status peringatan hawa panas terfokus
-      expect(find.text('🔥 Hawa Panas Terfokus Terdeteksi'), findsOneWidget);
-      expect(
-        find.text('Peringatan: Radiasi Termal & Listrik Terdeteksi'),
-        findsOneWidget,
+      // Pindah ke tab Pengaturan
+      await tester.tap(find.text('Pengaturan'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Kalibrasi Offset Suhu (±3.0 °C)'), findsOneWidget);
+      expect(find.text('Reset'), findsOneWidget);
+    });
+
+    testWidgets('Membuka modal Analisis Suhu', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoomThermometerScreen(service: mockService),
+        ),
       );
+      await tester.pumpAndSettle();
+
+      // Tekan tombol Analisis Suhu
+      await tester.tap(find.text('Analisis Suhu'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Rincian Analisis Termal & Iklim'), findsOneWidget);
+      expect(find.text('Suhu Baterai / Hardware'), findsOneWidget);
+      expect(find.text('Suhu Kamar Terestimasi'), findsOneWidget);
     });
   });
 }

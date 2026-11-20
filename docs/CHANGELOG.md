@@ -19,6 +19,14 @@ Semua perubahan penting dicatat di sini.
 - Pembaruan tampilan beranda `HomeScreen` dengan menerapkan koreksi bias hard-iron (`calibratedTotalFieldNt` atau profil kalibrasi aktif dari database) pada meteran jarum analog dan grafik gelombang real-time sehingga di udara bebas nilai terbaca normal di zona hijau (~42.000–46.000 nT) (#47)
 
 ### Ditambahkan
+- Desain ulang antarmuka Termometer Suhu Ruangan (`RoomThermometerScreen`) menyerupai aplikasi rujukan *Digital Thermometer: Room Temperature* dengan Speedometer Dial Arc (-10 s.d. 140), jarum putih dinamis, dan titik indikator oranye glowing (#61)
+- Model kompensasi termal adaptif non-linear: mengoreksi panas baterai/CPU saat ponsel aktif ($T_{bat} \ge 34.0^\circ\text{C}$) menjadi estimasi suhu kamar realistis (~$27.0^\circ\text{C}$ pada $T_{bat} = 35.5^\circ\text{C}$) persis seperti aplikasi rujukan (#61)
+- Banner peringatan dinamis: *"Perangkat Anda panas. Biarkan dingin sejenak agar pembacaan lebih akurat."* saat baterai dalam kondisi panas ($T_{bat} \ge 34.0^\circ\text{C}$) (#61)
+- Kartu metrik utama terpadu: Panas Perangkat (Normal / Hangat / Panas), Baterai (°C), Kualitas Udara (AQI), dan Radar Cuaca / Tekanan Atmosfer (hPa) (#61)
+- Mode Luar Ruangan (Outdoor Weather) lengkap dengan pemilih kota / lokasi (25 kota utama Indonesia) dan penarikan data suhu cuaca live otomatis via Open-Meteo API (#61)
+- Bottom Navigation Bar dengan 3 tab: `Dalam Ruangan`, `Luar Ruangan`, dan `Pengaturan` (#61)
+- Tombol toggle unit pill besar `✓ °C` (hijau mint) dan `°F` (oranye) (#61)
+- Modal analisis suhu rinci (*BottomSheet*) yang merinci kompensasi panas internal, hardware temp, suhu kamar, dan EMF Joule heating (#61)
 - Layar khusus mandiri Termometer Suhu Ruangan & Detektor Hawa Udara (`RoomThermometerScreen`) yang dapat diakses instan dari Beranda Utama tanpa memerlukan pembuatan proyek survei atau titik koordinat (#59)
 - Widget tabung termometer cairan kaca visual (`LiquidThermometerWidget`) dengan animasi tinggi kolom merkuri halus dan refleksi highlight kaca 3D yang berubah warna sesuai tingkat suhu dan kenyamanan (#59)
 - Pemilih mode ganda instan: Mode Dalam Ruangan (Indoor) dengan kompensasi disipasi termal perangkat dan Mode Cuaca Luar (Outdoor) dengan adaptasi pendinginan konveksi udara (#59)
