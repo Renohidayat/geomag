@@ -64,6 +64,9 @@ class OutdoorWeatherData {
   final double humidityPercent;
   final double pressureHpa;
   final double windSpeedKmh;
+  final String? windDirectionText;
+  final double? precipitationMm;
+  final double? elevationM;
   final String weatherCondition;
   final String weatherEmoji;
   final bool isLive;
@@ -83,11 +86,14 @@ class OutdoorWeatherData {
     required this.humidityPercent,
     required this.pressureHpa,
     required this.windSpeedKmh,
+    this.windDirectionText,
+    this.precipitationMm,
+    this.elevationM,
     required this.weatherCondition,
     required this.weatherEmoji,
     required this.isLive,
     required this.lastUpdated,
-    this.sourceLabel = 'Model Open-Meteo (CC BY 4.0)',
+    this.sourceLabel = 'Model Open-Meteo (Real-Time)',
     this.hourlyForecasts = const [],
     this.adm4Code,
     this.isGps = false,
@@ -651,20 +657,35 @@ class RoomClimateService {
 
   /// Menarik cuaca dual-source untuk lokasi administratif [AdmLocation].
   /// - Sumber 1 (Utama): BMKG API jika memiliki kode adm4 (dan respons < 3.5 detik).
-  /// - Sumber 2 (Cadangan): Open-Meteo API berbasis koordinat lat/lon real-time.
-  Future<OutdoorWeatherData> fetchOutdoorWeatherForLocation(AdmLocation location) async {
+  /// - Sumber 2 (Cadangan): Open-Meteo API berbasis koordinat lat/lon real-time (elevasi & kondisi terperinci).
+  Future<OutdoorWeatherData> fetchOutdoorWeatherForLocation(
+    AdmLocation location, {
+    bool forceRefresh = false,
+  }) async {
     final cacheKey = '${location.latitude.toStringAsFixed(2)}_${location.longitude.toStringAsFixed(2)}_${location.adm4Code ?? ""}';
 
-    // 1. Periksa cache lokal (TTL 15 menit)
-    final cached = _weatherCache[cacheKey];
-    if (cached != null) {
-      final age = DateTime.now().difference(cached.cachedAt);
-      if (age.inMinutes < 15) {
-        return cached.data;
+    // 1. Periksa cache lokal jika tidak dipaksa refresh (TTL 5 menit)
+    if (!forceRefresh) {
+      final cached = _weatherCache[cacheKey];
+      if (cached != null) {
+        final age = DateTime.now().difference(cached.cachedAt);
+        if (age.inMinutes < 5) {
+          return cached.data;
+        }
       }
     }
 
-    // 2. Coba sumber utama: BMKG API jika memiliki kode wilayah adm4
+    // 2. Sumber utama real-time: Open-Meteo API berbasis koordinat lat/lon presisi tinggi
+    // Menghitung kompensasi elevasi dpl, arah mata angin 360°, curah hujan live, dan suhu terkini
+    try {
+      final openMeteoData = await _fetchOpenMeteoWeather(location);
+      _weatherCache[cacheKey] = _CachedWeatherData(data: openMeteoData, cachedAt: DateTime.now());
+      return openMeteoData;
+    } catch (_) {
+      // Fallback ke BMKG jika Open-Meteo tidak dapat dijangkau
+    }
+
+    // 3. Sumber cadangan Indonesia: BMKG API jika memiliki kode wilayah adm4
     if (location.adm4Code != null && location.adm4Code!.isNotEmpty) {
       try {
         final bmkgData = await _fetchBmkgWeather(location);
@@ -673,17 +694,8 @@ class RoomClimateService {
           return bmkgData;
         }
       } catch (_) {
-        // Fallback ke Open-Meteo jika BMKG timeout / error
+        // Fallback offline jika BMKG juga gagal
       }
-    }
-
-    // 3. Sumber cadangan / global: Open-Meteo API
-    try {
-      final openMeteoData = await _fetchOpenMeteoWeather(location);
-      _weatherCache[cacheKey] = _CachedWeatherData(data: openMeteoData, cachedAt: DateTime.now());
-      return openMeteoData;
-    } catch (_) {
-      // Fallback offline jika kedua API tidak dapat dijangkau
     }
 
     // 4. Default Offline Fallback jika tanpa koneksi internet sama sekali
@@ -712,12 +724,12 @@ class RoomClimateService {
   /// Menarik data cuaca dari BMKG publik (prakiraan-cuaca adm4)
   Future<OutdoorWeatherData?> _fetchBmkgWeather(AdmLocation location) async {
     final client = HttpClient();
-    client.connectionTimeout = const Duration(milliseconds: 3500);
+    client.connectionTimeout = const Duration(milliseconds: 2500);
 
     final url = Uri.parse('https://api.bmkg.go.id/publik/prakiraan-cuaca?adm4=${location.adm4Code}');
     final request = await client.getUrl(url);
     request.headers.set('User-Agent', 'GeoMagApp/1.0 (Android)');
-    final response = await request.close().timeout(const Duration(milliseconds: 3500));
+    final response = await request.close().timeout(const Duration(milliseconds: 2500));
 
     if (response.statusCode != 200) return null;
 
@@ -815,21 +827,21 @@ class RoomClimateService {
     );
   }
 
-  /// Menarik data cuaca dari Open-Meteo publik
+  /// Menarik data cuaca dari Open-Meteo publik berbasis koordinat lat/lon real-time
   Future<OutdoorWeatherData> _fetchOpenMeteoWeather(AdmLocation location) async {
     final client = HttpClient();
-    client.connectionTimeout = const Duration(seconds: 4);
+    client.connectionTimeout = const Duration(seconds: 5);
 
     final url = Uri.parse(
       'https://api.open-meteo.com/v1/forecast?'
       'latitude=${location.latitude}&longitude=${location.longitude}'
-      '&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,surface_pressure,wind_speed_10m'
+      '&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m'
       '&hourly=temperature_2m,relative_humidity_2m,weather_code'
       '&timezone=auto',
     );
 
     final request = await client.getUrl(url);
-    final response = await request.close().timeout(const Duration(seconds: 4));
+    final response = await request.close().timeout(const Duration(seconds: 5));
 
     if (response.statusCode != 200) {
       throw HttpException('Open-Meteo HTTP error ${response.statusCode}');
@@ -845,8 +857,12 @@ class RoomClimateService {
     final code = (current['weather_code'] as num?)?.toInt() ?? 0;
     final pressure = (current['surface_pressure'] as num?)?.toDouble() ?? 1012.0;
     final wind = (current['wind_speed_10m'] as num?)?.toDouble() ?? 8.0;
+    final windDeg = (current['wind_direction_10m'] as num?)?.toDouble();
+    final precip = (current['precipitation'] as num?)?.toDouble() ?? (current['rain'] as num?)?.toDouble();
+    final elevation = (json['elevation'] as num?)?.toDouble();
 
     final (cond, emoji) = _interpretWeatherCode(code);
+    final windDir = windDeg != null ? interpretWindDirection(windDeg) : null;
 
     // Parse hourly forecast untuk 24 jam ke depan (tiap 3 jam = 8 slot)
     final hourlyForecasts = <HourlyForecast>[];
@@ -887,27 +903,41 @@ class RoomClimateService {
       humidityPercent: humidity,
       pressureHpa: pressure,
       windSpeedKmh: wind,
+      windDirectionText: windDir,
+      precipitationMm: precip,
+      elevationM: elevation,
       weatherCondition: cond,
       weatherEmoji: emoji,
       isLive: true,
       lastUpdated: DateTime.now(),
-      sourceLabel: 'Model Open-Meteo (CC BY 4.0)',
+      sourceLabel: 'Model Open-Meteo (Real-Time)',
       hourlyForecasts: hourlyForecasts,
       adm4Code: location.adm4Code,
       isGps: location.isGpsLocation,
     );
   }
 
+  /// Menerjemahkan derajat mata angin (0-360) ke teks bahasa Indonesia
+  static String interpretWindDirection(double degrees) {
+    const dirs = ['Utara', 'Timur Laut', 'Timur', 'Tenggara', 'Selatan', 'Barat Daya', 'Barat', 'Barat Laut'];
+    final idx = ((degrees + 22.5) % 360) ~/ 45;
+    return dirs[idx % dirs.length];
+  }
+
   /// Menerjemahkan WMO Weather Interpretation Code ke bahasa Indonesia dan emoji.
   static (String, String) _interpretWeatherCode(int code) {
     if (code == 0) return ('Cerah', '☀️');
     if (code == 1 || code == 2) return ('Cerah Berawan', '⛅');
-    if (code == 3) return ('Berawan Tebal', '☁️');
+    if (code == 3) return ('Mendung / Berawan Tebal', '☁️');
     if (code == 45 || code == 48) return ('Berkabut', '🌫️');
-    if (code >= 51 && code <= 55) return ('Gerimis', '🌦️');
-    if (code >= 61 && code <= 65) return ('Hujan', '🌧️');
-    if (code >= 80 && code <= 82) return ('Hujan Lebat', '⛈️');
-    if (code >= 95) return ('Badai Petir', '⚡');
+    if (code >= 51 && code <= 55) return ('Hujan Ringan / Gerimis', '🌦️');
+    if (code >= 56 && code <= 57) return ('Gerimis Beku', '🌧️');
+    if (code >= 61 && code <= 65) return ('Hujan Sedang', '🌧️');
+    if (code >= 66 && code <= 67) return ('Hujan Dingin', '🌧️');
+    if (code >= 71 && code <= 77) return ('Salju', '🌨️');
+    if (code >= 80 && code <= 82) return ('Hujan Deras / Showers', '⛈️');
+    if (code >= 85 && code <= 86) return ('Hujan Salju', '🌨️');
+    if (code >= 95 && code <= 99) return ('Badai Petir', '⚡');
     return ('Cerah Berawan', '⛅');
   }
 }

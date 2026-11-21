@@ -60,8 +60,8 @@ void main() {
       expect(find.text('°C'), findsWidgets);
       expect(find.text('°F'), findsWidgets);
 
-      // Memeriksa dial card 'Suhu kamar'
-      expect(find.text('Suhu kamar'), findsOneWidget);
+      // Memeriksa dial card 'Suhu Sekitar'
+      expect(find.text('Suhu Sekitar'), findsWidgets);
       expect(find.text('Analisis Suhu'), findsOneWidget);
 
       // Memeriksa 4 kartu metrik utama
@@ -71,8 +71,7 @@ void main() {
       expect(find.text('Radar Cuaca'), findsOneWidget);
 
       // Memeriksa Bottom Navigation Bar
-      expect(find.text('Dalam Ruangan'), findsOneWidget);
-      expect(find.text('Luar Ruangan'), findsOneWidget);
+      expect(find.text('Cuaca Wilayah'), findsOneWidget);
       expect(find.text('Pengaturan'), findsOneWidget);
     });
 
@@ -136,7 +135,7 @@ void main() {
       expect(find.text('°C'), findsWidgets);
     });
 
-    testWidgets('Pindah ke tab Luar Ruangan dan membuka pemilih wilayah adm4/GPS',
+    testWidgets('Pindah ke tab Cuaca Wilayah dan membuka pemilih wilayah adm4/GPS',
         (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -145,8 +144,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Pindah ke tab Luar Ruangan
-      await tester.tap(find.text('Luar Ruangan'));
+      // Pindah ke tab Cuaca Wilayah
+      await tester.tap(find.text('Cuaca Wilayah'));
       await tester.pumpAndSettle();
 
       // Memeriksa elemen lokasi bawaan (Cimalaka, Sumedang)
@@ -197,12 +196,36 @@ void main() {
       await tester.pumpAndSettle();
 
       // Tekan tombol Analisis Suhu
+      await tester.ensureVisible(find.text('Analisis Suhu'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Analisis Suhu'));
       await tester.pumpAndSettle();
 
       expect(find.text('Rincian Analisis Termal & Iklim'), findsOneWidget);
       expect(find.text('Suhu Baterai / Hardware'), findsOneWidget);
-      expect(find.text('Suhu Kamar Terestimasi'), findsOneWidget);
+      expect(find.text('Suhu Sekitar Terestimasi'), findsOneWidget);
+    });
+
+    testWidgets('Banner Penyesuaian Otomatis Cuaca muncul dan dapat diselaraskan', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoomThermometerScreen(service: mockService),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Memeriksa banner patokan cuaca muncul
+      expect(find.textContaining('Patokan Cuaca'), findsOneWidget);
+
+      // Mengetuk tombol Sinkron/Sesuaikan
+      final syncButton = find.byIcon(Icons.sync_rounded).first;
+      await tester.ensureVisible(syncButton);
+      await tester.pumpAndSettle();
+      await tester.tap(syncButton);
+      await tester.pumpAndSettle();
+
+      // SnackBar konfirmasi muncul
+      expect(find.textContaining('berhasil diselaraskan'), findsOneWidget);
     });
   });
 }
