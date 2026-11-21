@@ -60,8 +60,8 @@ void main() {
       expect(find.text('°C'), findsWidgets);
       expect(find.text('°F'), findsWidgets);
 
-      // Memeriksa dial card 'Suhu kamar'
-      expect(find.text('Suhu kamar'), findsOneWidget);
+      // Memeriksa dial card 'Suhu Ruangan'
+      expect(find.text('Suhu Ruangan'), findsOneWidget);
       expect(find.text('Analisis Suhu'), findsOneWidget);
 
       // Memeriksa 4 kartu metrik utama
@@ -204,7 +204,7 @@ void main() {
 
       expect(find.text('Rincian Analisis Termal & Iklim'), findsOneWidget);
       expect(find.text('Suhu Baterai / Hardware'), findsOneWidget);
-      expect(find.text('Suhu Kamar Terestimasi'), findsOneWidget);
+      expect(find.text('Suhu Ruangan Terestimasi'), findsOneWidget);
     });
 
     testWidgets('Banner Penyesuaian Otomatis Cuaca muncul dan dapat diselaraskan', (tester) async {

@@ -604,8 +604,8 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
             const SizedBox(height: 12),
           ],
 
-          // 3. Hero Card Dial Meter: Suhu Kamar
-          _buildSuhuKamarDialCard(theme, data, tempValue, tempUnit),
+          // 3. Hero Card Dial Meter: Suhu Ruangan
+          _buildSuhuRuanganDialCard(theme, data, tempValue, tempUnit),
           const SizedBox(height: 14),
 
           // 4. Baris Kartu 1: Panas Perangkat & Baterai
@@ -774,8 +774,8 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
     );
   }
 
-  /// Kartu Utama Dial Meter (Suhu Kamar)
-  Widget _buildSuhuKamarDialCard(
+  /// Kartu Utama Dial Meter (Suhu Ruangan)
+  Widget _buildSuhuRuanganDialCard(
     ThemeData theme,
     RoomClimateData data,
     double? tempValue,
@@ -798,13 +798,13 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
       child: Column(
         children: [
-          // Header Kartu: Suhu Kamar & ⋮ Menu
+          // Header Kartu: Suhu Ruangan & ⋮ Menu
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const SizedBox(width: 24), // Spacer keseimbangan
               const Text(
-                'Suhu kamar',
+                'Suhu Ruangan',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
@@ -1076,7 +1076,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                     : '--',
               ),
               _buildModalRow(
-                'Suhu Kamar Terestimasi',
+                'Suhu Ruangan Terestimasi',
                 '${_formatTemp(data.ambientTempC)} °C',
               ),
               _buildModalRow(
@@ -1098,7 +1098,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
               const SizedBox(height: 12),
               Text(
                 'Estimasi termal adaptif memisahkan kondisi stabil (linear idle/aktif) '
-                'dan dinamis pendinginan Newton (dT/dt) untuk merekonstruksi suhu udara kamar nyata.',
+                'dan dinamis pendinginan Newton (dT/dt) untuk merekonstruksi suhu udara ruangan nyata.',
                 style: TextStyle(
                   fontSize: 11,
                   fontStyle: FontStyle.italic,
