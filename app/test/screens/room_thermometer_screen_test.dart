@@ -60,8 +60,8 @@ void main() {
       expect(find.text('°C'), findsWidgets);
       expect(find.text('°F'), findsWidgets);
 
-      // Memeriksa dial card 'Suhu Ruangan'
-      expect(find.text('Suhu Ruangan'), findsOneWidget);
+      // Memeriksa dial card 'Suhu Sekitar'
+      expect(find.text('Suhu Sekitar'), findsWidgets);
       expect(find.text('Analisis Suhu'), findsOneWidget);
 
       // Memeriksa 4 kartu metrik utama
@@ -71,8 +71,7 @@ void main() {
       expect(find.text('Radar Cuaca'), findsOneWidget);
 
       // Memeriksa Bottom Navigation Bar
-      expect(find.text('Dalam Ruangan'), findsOneWidget);
-      expect(find.text('Luar Ruangan'), findsOneWidget);
+      expect(find.text('Cuaca Wilayah'), findsOneWidget);
       expect(find.text('Pengaturan'), findsOneWidget);
     });
 
@@ -136,7 +135,7 @@ void main() {
       expect(find.text('°C'), findsWidgets);
     });
 
-    testWidgets('Pindah ke tab Luar Ruangan dan membuka pemilih wilayah adm4/GPS',
+    testWidgets('Pindah ke tab Cuaca Wilayah dan membuka pemilih wilayah adm4/GPS',
         (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -145,8 +144,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Pindah ke tab Luar Ruangan
-      await tester.tap(find.text('Luar Ruangan'));
+      // Pindah ke tab Cuaca Wilayah
+      await tester.tap(find.text('Cuaca Wilayah'));
       await tester.pumpAndSettle();
 
       // Memeriksa elemen lokasi bawaan (Cimalaka, Sumedang)
@@ -204,7 +203,7 @@ void main() {
 
       expect(find.text('Rincian Analisis Termal & Iklim'), findsOneWidget);
       expect(find.text('Suhu Baterai / Hardware'), findsOneWidget);
-      expect(find.text('Suhu Ruangan Terestimasi'), findsOneWidget);
+      expect(find.text('Suhu Sekitar Terestimasi'), findsOneWidget);
     });
 
     testWidgets('Banner Penyesuaian Otomatis Cuaca muncul dan dapat diselaraskan', (tester) async {

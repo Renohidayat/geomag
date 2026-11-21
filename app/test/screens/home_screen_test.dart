@@ -129,7 +129,7 @@ void main() {
   });
 
   testWidgets(
-      'HomeScreen memiliki kartu navigasi Termometer Suhu Ruangan & Udara',
+      'HomeScreen memiliki kartu navigasi Termometer Suhu Sekitar & Cuaca',
       (tester) async {
     final mockService = MockMagnetometerService();
     final testDb = AppDatabase(NativeDatabase.memory());
@@ -141,7 +141,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Termometer Suhu Ruangan & Udara'), findsOneWidget);
+    expect(find.text('Termometer Suhu Sekitar & Cuaca'), findsOneWidget);
 
     mockService.close();
     await testDb.close();

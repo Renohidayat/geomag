@@ -13,9 +13,9 @@ import '../services/magnetometer_service.dart';
 import '../services/room_climate_service.dart';
 import '../services/thermal_state_estimator.dart';
 
-/// Layar Termometer Suhu Ruangan & Cuaca Luar Ruangan.
+/// Layar Termometer Suhu Sekitar & Cuaca Wilayah.
 ///
-/// Dibuat menyerupai antarmuka "Digital Thermometer: Room Temperature"
+/// Dibuat menyerupai antarmuka "Digital Thermometer"
 /// dengan Dial Meter melingkar, indikator Panas Perangkat, kompensasi panas dinamis,
 /// deteksi lokasi GPS real-time, hirarki adm4 desa/kecamatan, dan cuaca terpadu BMKG / Open-Meteo.
 class RoomThermometerScreen extends StatefulWidget {
@@ -57,11 +57,11 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
   Timer? _tickerTimer;
   int _loggingElapsedSeconds = 0;
 
-  int _currentTabIndex = 0; // 0: Dalam Ruangan, 1: Luar Ruangan, 2: Pengaturan
+  int _currentTabIndex = 0; // 0: Suhu Sekitar, 1: Cuaca Wilayah, 2: Pengaturan
   bool _isFahrenheit = false;
   double _calibrationOffsetC = 0.0;
 
-  // State Luar Ruangan (Outdoor Weather & Adm4 / GPS)
+  // State Cuaca Wilayah (Outdoor Weather & Adm4 / GPS)
   late AdmLocation _selectedLocation;
   OutdoorWeatherData? _outdoorWeather;
   bool _isLoadingWeather = false;
@@ -137,7 +137,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
     );
   }
 
-  /// Menyelaraskan patokan suhu ruangan secara otomatis ke suhu cuaca lingkungan.
+  /// Menyelaraskan patokan suhu sekitar secara otomatis ke suhu cuaca lingkungan.
   void _syncWithOutdoorWeather({bool showFeedback = true}) {
     final weather = _outdoorWeather;
     if (weather == null) return;
@@ -176,7 +176,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Suhu ruangan berhasil diselaraskan ke patokan cuaca ${weather.cityName} (${weather.temperatureC.toStringAsFixed(1)} °C)!',
+            'Suhu sekitar berhasil diselaraskan ke patokan cuaca ${weather.cityName} (${weather.temperatureC.toStringAsFixed(1)} °C)!',
           ),
           backgroundColor: const Color(0xFF00A8B5),
           duration: const Duration(seconds: 3),
@@ -199,7 +199,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
         });
 
         // Penyesuaian otomatis: jika profil belum dikalibrasi manual oleh pengguna,
-        // selaraskan patokan suhu ruangan ke suhu cuaca lingkungan aktual secara instan
+        // selaraskan patokan suhu sekitar ke suhu cuaca lingkungan aktual secara instan
         if (!_thermalEstimator.profile.isCalibrated ||
             _thermalEstimator.profile.deviceId.startsWith('auto_')) {
           _syncWithOutdoorWeather(showFeedback: false);
@@ -379,11 +379,11 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.device_thermostat_rounded),
-            label: 'Dalam Ruangan',
+            label: 'Suhu Sekitar',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.wb_sunny_rounded),
-            label: 'Luar Ruangan',
+            label: 'Cuaca Wilayah',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.settings_rounded),
@@ -395,7 +395,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
   }
 
   /// ==========================================
-  /// 1. TAMPILAN DALAM RUANGAN (INDOOR VIEW)
+  /// 1. TAMPILAN SUHU SEKITAR (AMBIENT VIEW)
   /// ==========================================
   Widget _buildIndoorView(ThemeData theme, RoomClimateData data) {
     final tempValue = _isFahrenheit ? data.ambientTempF : data.ambientTempC;
@@ -564,7 +564,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                         ),
                         Text(
                           _thermalEstimator.profile.deviceId.startsWith('auto_')
-                              ? 'Suhu ruangan otomatis membaca patokan cuaca lingkungan.'
+                              ? 'Suhu sekitar otomatis membaca patokan cuaca lingkungan.'
                               : 'Ketuk selaraskan untuk menjadikan suhu cuaca sebagai patokan.',
                           style: TextStyle(
                             fontSize: 11,
@@ -604,8 +604,8 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
             const SizedBox(height: 12),
           ],
 
-          // 3. Hero Card Dial Meter: Suhu Ruangan
-          _buildSuhuRuanganDialCard(theme, data, tempValue, tempUnit),
+          // 3. Hero Card Dial Meter: Suhu Sekitar
+          _buildSuhuSekitarDialCard(theme, data, tempValue, tempUnit),
           const SizedBox(height: 14),
 
           // 4. Baris Kartu 1: Panas Perangkat & Baterai
@@ -774,8 +774,8 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
     );
   }
 
-  /// Kartu Utama Dial Meter (Suhu Ruangan)
-  Widget _buildSuhuRuanganDialCard(
+  /// Kartu Utama Dial Meter (Suhu Sekitar)
+  Widget _buildSuhuSekitarDialCard(
     ThemeData theme,
     RoomClimateData data,
     double? tempValue,
@@ -798,13 +798,13 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
       child: Column(
         children: [
-          // Header Kartu: Suhu Ruangan & ⋮ Menu
+          // Header Kartu: Suhu Sekitar & ⋮ Menu
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const SizedBox(width: 24), // Spacer keseimbangan
               const Text(
-                'Suhu Ruangan',
+                'Suhu Sekitar',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
@@ -1082,7 +1082,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                     : '--',
               ),
               _buildModalRow(
-                'Suhu Ruangan Terestimasi',
+                'Suhu Sekitar Terestimasi',
                 '${_formatTemp(data.ambientTempC)} °C',
               ),
               _buildModalRow(
@@ -1104,7 +1104,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
               const SizedBox(height: 12),
               Text(
                 'Estimasi termal adaptif memisahkan kondisi stabil (linear idle/aktif) '
-                'dan dinamis pendinginan Newton (dT/dt) untuk merekonstruksi suhu udara ruangan nyata.',
+                'dan dinamis pendinginan Newton (dT/dt) untuk merekonstruksi suhu udara sekitar secara nyata.',
                 style: TextStyle(
                   fontSize: 11,
                   fontStyle: FontStyle.italic,
@@ -1188,7 +1188,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                 controller: textController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(
-                  labelText: 'Suhu Referensi Ruangan (°C)',
+                  labelText: 'Suhu Referensi Sekitar (°C)',
                   border: OutlineInputBorder(),
                   suffixText: '°C',
                 ),
@@ -1257,7 +1257,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
   }
 
   /// ==========================================
-  /// 2. TAMPILAN LUAR RUANGAN (OUTDOOR VIEW)
+  /// 2. TAMPILAN CUACA WILAYAH (OUTDOOR WEATHER VIEW)
   /// ==========================================
   Widget _buildOutdoorView(ThemeData theme) {
     final weather = _outdoorWeather;
@@ -1373,7 +1373,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Kartu Utama Cuaca Luar Ruangan
+          // Kartu Utama Cuaca Wilayah
           if (_isLoadingWeather) ...[
             const SizedBox(
               height: 220,
@@ -1390,7 +1390,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
 
             const SizedBox(height: 16),
 
-            // Grid 6 Parameter Lengkap Luar Ruangan
+            // Grid 6 Parameter Lengkap Cuaca Wilayah
             Row(
               children: [
                 Expanded(
@@ -2063,7 +2063,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                   ),
                   Text(
                     'Gunakan penggeser di bawah jika Anda ingin mencocokkan pembacaan '
-                    'suhu dengan termometer referensi / AC di ruangan Anda.',
+                    'suhu dengan termometer referensi di lokasi Anda.',
                     style: TextStyle(
                       fontSize: 12,
                       color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
@@ -2130,9 +2130,9 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                   ),
                   const SizedBox(height: 10),
                   const Text(
-                    '1. Letakkan ponsel di atas meja datar selama 2-3 menit tanpa disentuh agar suhu baterai menyatu dengan suhu udara ruangan.\n\n'
+                    '1. Letakkan ponsel di atas permukaan datar selama 2-3 menit tanpa disentuh agar suhu baterai menyatu dengan suhu udara sekitar.\n\n'
                     '2. Hindari mengukur saat ponsel sedang di-charge atau baru saja memainkan game berat untuk mencegah bias suhu internal.\n\n'
-                    '3. Pada tab Luar Ruangan, gunakan tombol GPS untuk deteksi posisi otomatis atau cari wilayah hingga tingkat desa/kecamatan.',
+                    '3. Pada tab Cuaca Wilayah, gunakan tombol GPS untuk deteksi posisi otomatis atau cari wilayah hingga tingkat desa/kecamatan.',
                     style: TextStyle(fontSize: 12, height: 1.5),
                   ),
                 ],
@@ -2582,7 +2582,7 @@ class _CalibrationWizardBottomSheetState
                     controller: _refTempController,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
-                      labelText: 'Suhu Referensi Ruangan',
+                      labelText: 'Suhu Referensi Sekitar',
                       suffixText: '°C',
                       border: OutlineInputBorder(),
                     ),

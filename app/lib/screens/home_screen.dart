@@ -567,11 +567,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 8),
 
-        // Menu 7: Termometer Suhu Ruangan & Udara (Digital Thermometer)
+        // Menu 7: Termometer Suhu Sekitar & Cuaca (Digital Thermometer)
         _buildNavCard(
           theme: theme,
-          title: 'Termometer Suhu Ruangan & Udara',
-          subtitle: 'Pengukur suhu instan, kelembaban, tekanan barometer, & detektor hawa panas terfokus',
+          title: 'Termometer Suhu Sekitar & Cuaca',
+          subtitle: 'Pendeteksi hawa suhu sekitar (panas/dingin), kelembaban, tekanan barometer, & cuaca wilayah',
           icon: Icons.device_thermostat,
           color: Colors.deepOrangeAccent,
           onTap: () {
