@@ -855,16 +855,22 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
             width: 260,
             height: 220,
             child: TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: 20.0, end: data.ambientTempC ?? 0.0),
+              key: ValueKey(_isFahrenheit),
+              tween: Tween<double>(
+                begin: _isFahrenheit ? 68.0 : 20.0,
+                end: (_isFahrenheit ? data.ambientTempF : data.ambientTempC) ?? (_isFahrenheit ? 68.0 : 20.0),
+              ),
               duration: const Duration(milliseconds: 700),
               curve: Curves.easeOutCubic,
-              builder: (context, animatedTempC, child) {
+              builder: (context, animatedTemp, child) {
+                final minScale = -10.0;
+                final maxScale = _isFahrenheit ? 140.0 : 50.0;
                 return CustomPaint(
                   size: const Size(260, 220),
                   painter: _SpeedometerDialPainter(
-                    temperatureC: animatedTempC,
-                    minTempC: -10.0,
-                    maxTempC: 140.0,
+                    temperatureValue: animatedTemp,
+                    minScale: minScale,
+                    maxScale: maxScale,
                     displayTemp: _formatTemp(tempValue),
                     displayUnit: tempUnit,
                   ),
@@ -2179,18 +2185,19 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
 }
 
 /// Custom Painter untuk Dial Speedometer melingkar ala aplikasi rujukan
-/// Skala -10 hingga 140 dengan jarum putih elegan dan titik indikator oranye.
+/// Skala adaptif (-10 s/d 50 untuk Celsius, -10 s/d 140 untuk Fahrenheit)
+/// dengan jarum putih elegan dan titik indikator oranye.
 class _SpeedometerDialPainter extends CustomPainter {
-  final double temperatureC;
-  final double minTempC;
-  final double maxTempC;
+  final double temperatureValue;
+  final double minScale;
+  final double maxScale;
   final String displayTemp;
   final String displayUnit;
 
   _SpeedometerDialPainter({
-    required this.temperatureC,
-    required this.minTempC,
-    required this.maxTempC,
+    required this.temperatureValue,
+    required this.minScale,
+    required this.maxScale,
     required this.displayTemp,
     required this.displayUnit,
   });
@@ -2220,8 +2227,8 @@ class _SpeedometerDialPainter extends CustomPainter {
     );
 
     // 2. Gambar Busur Nilai Aktif
-    final clampedTemp = temperatureC.clamp(minTempC, maxTempC);
-    final frac = ((clampedTemp - minTempC) / (maxTempC - minTempC)).clamp(0.0, 1.0);
+    final clampedTemp = temperatureValue.clamp(minScale, maxScale);
+    final frac = ((clampedTemp - minScale) / (maxScale - minScale)).clamp(0.0, 1.0);
     final activeSweep = sweepAngle * frac;
 
     final activeTrackPaint = Paint()
@@ -2253,12 +2260,12 @@ class _SpeedometerDialPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
     canvas.drawCircle(Offset(dotX, dotY), 6.0, dotPaint);
 
-    // 4. Label Angka Skala: -10 dan 140 (Persis seperti rujukan)
+    // 4. Label Angka Skala: Kiri (min) dan Kanan (max) adaptif
     final labelPainter = TextPainter(textDirection: TextDirection.ltr);
 
-    labelPainter.text = const TextSpan(
-      text: '-10',
-      style: TextStyle(
+    labelPainter.text = TextSpan(
+      text: minScale.toInt().toString(),
+      style: const TextStyle(
         color: Colors.white70,
         fontSize: 12,
         fontWeight: FontWeight.bold,
@@ -2270,9 +2277,9 @@ class _SpeedometerDialPainter extends CustomPainter {
       Offset(center.dx - radius * 0.70, center.dy + radius * 0.55),
     );
 
-    labelPainter.text = const TextSpan(
-      text: '140',
-      style: TextStyle(
+    labelPainter.text = TextSpan(
+      text: maxScale.toInt().toString(),
+      style: const TextStyle(
         color: Colors.white70,
         fontSize: 12,
         fontWeight: FontWeight.bold,
@@ -2357,7 +2364,9 @@ class _SpeedometerDialPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SpeedometerDialPainter oldDelegate) {
-    return oldDelegate.temperatureC != temperatureC ||
+    return oldDelegate.temperatureValue != temperatureValue ||
+        oldDelegate.minScale != minScale ||
+        oldDelegate.maxScale != maxScale ||
         oldDelegate.displayTemp != displayTemp ||
         oldDelegate.displayUnit != displayUnit;
   }
