@@ -183,7 +183,11 @@ void main() {
 
       expect(find.text('Kalibrasi Termal Fisik HP'), findsOneWidget);
       expect(find.text('Kalibrasi Offset Suhu (±3.0 °C)'), findsOneWidget);
-      expect(find.text('Sumber Data & Atribusi'), findsOneWidget);
+      expect(find.text('Notifikasi Cerdas Latar Belakang'), findsOneWidget);
+      expect(find.text('Peringatan Hawa Panas (≥ 35 °C)'), findsOneWidget);
+      expect(find.text('Peringatan Medan Magnet Kritis (> 100 µT)'), findsOneWidget);
+      expect(find.text('Tes Suhu'), findsOneWidget);
+      expect(find.text('Tes Magnet'), findsOneWidget);
       expect(find.text('Reset'), findsOneWidget);
     });
 

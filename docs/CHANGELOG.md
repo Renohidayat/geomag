@@ -25,6 +25,11 @@ Semua perubahan penting dicatat di sini.
 - Pembaruan tampilan beranda `HomeScreen` dengan menerapkan koreksi bias hard-iron (`calibratedTotalFieldNt` atau profil kalibrasi aktif dari database) pada meteran jarum analog dan grafik gelombang real-time sehingga di udara bebas nilai terbaca normal di zona hijau (~42.000–46.000 nT) (#47)
 
 ### Ditambahkan
+- Sistem notifikasi cerdas latar belakang (`SmartNotificationService`) dengan izin `POST_NOTIFICATIONS` dan `VIBRATE` native Android (#66)
+- Filter pintar pencegah alarm palsu: menahan notifikasi hawa panas saat HP sedang di-charge atau arus baterai tinggi ($|I| > 600\text{ mA}$) akibat bermain game berat / beban CPU (#66)
+- Notifikasi hawa panas ekstrem otomatis bergetar dan pop-up saat suhu sekitar murni menyentuh $\ge 35^\circ\text{C}$ dengan arus rendah (#66)
+- Notifikasi darurat anomali medan magnet kritis saat fluks magnet total melebihi $100\ \mu\text{T}$ (#66)
+- Kartu konfigurasi notifikasi cerdas dengan saklar on/off mandiri dan tombol uji coba getar notifikasi langsung di tab Pengaturan (#66)
 - Estimator keadaan termal berbasis fisika (terinspirasi *BaT*, He et al. 2020 & Overeem et al. 2013) dengan 4 keadaan: `STABIL_IDLE`, `AKTIF_RINGAN`, `MENDINGIN_MENGHANGAT` (Hukum Pendinginan Newton $T_{\text{ruang}} \approx T_{\text{bat}} - D_0 + \tau \cdot \frac{dT}{dt}$), dan `CHARGING_BEBAN_BERAT` dengan jeda pemulihan (#63)
 - Wizard kalibrasi fisik termal HP mandiri (15 menit standar dan 10 menit cepat) bersama termometer referensi untuk mencocokkan parameter $D_0$, $\tau$, dan offset per model perangkat, disimpan secara persisten (#63)
 - Perekam data logging sampel termal kontinu ke file CSV (`waktu`, `suhu_baterai`, `status_charging`, `arus_baterai`, `layar`, `suhu_referensi`) (#63)

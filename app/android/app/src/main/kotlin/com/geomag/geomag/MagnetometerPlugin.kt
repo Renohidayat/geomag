@@ -1,5 +1,9 @@
 package com.geomag.geomag
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -20,6 +24,11 @@ import io.flutter.plugin.common.MethodChannel
 import kotlin.math.abs
 
 class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
+
+    companion object {
+        const val CHANNEL_THERMAL_ALERT = "geomag_thermal_alert"
+        const val CHANNEL_MAGNETIC_ALERT = "geomag_magnetic_alert"
+    }
 
     private lateinit var context: Context
     private lateinit var methodChannel: MethodChannel
@@ -86,6 +95,23 @@ class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "getThermalSnapshot" -> {
                 refreshBatteryStateOnce()
                 result.success(buildThermalDataMap())
+            }
+            "initNotificationChannels" -> {
+                initNotificationChannels()
+                result.success(true)
+            }
+            "showNotification" -> {
+                val id = call.argument<Int>("id") ?: 1001
+                val channelId = call.argument<String>("channelId") ?: CHANNEL_THERMAL_ALERT
+                val title = call.argument<String>("title") ?: "GeoMag Alert"
+                val body = call.argument<String>("body") ?: ""
+                val success = showNativeNotification(id, channelId, title, body)
+                result.success(success)
+            }
+            "cancelNotification" -> {
+                val id = call.argument<Int>("id") ?: 1001
+                cancelNativeNotification(id)
+                result.success(true)
             }
             else -> result.notImplemented()
         }
@@ -183,6 +209,82 @@ class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         pressureListener = null
         pressureSensor = null
         cachedPressureHpa = -1.0
+    }
+
+    private fun initNotificationChannels() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+
+            val thermalChannel = NotificationChannel(
+                CHANNEL_THERMAL_ALERT,
+                "Peringatan Hawa Panas Ekstrem",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Peringatan saat hawa suhu sekitar mencapai batas bahaya"
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 400, 200, 400)
+            }
+            nm.createNotificationChannel(thermalChannel)
+
+            val magneticChannel = NotificationChannel(
+                CHANNEL_MAGNETIC_ALERT,
+                "Peringatan Medan Magnet Kritis",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Peringatan saat terdeteksi medan magnet sangat kuat (> 100 µT)"
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 500, 250, 500)
+            }
+            nm.createNotificationChannel(magneticChannel)
+        }
+    }
+
+    private fun showNativeNotification(id: Int, channelId: String, title: String, body: String): Boolean {
+        return try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return false
+            initNotificationChannels()
+
+            val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            val pendingIntent = if (intent != null) {
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                } else {
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                }
+                PendingIntent.getActivity(context, id, intent, flags)
+            } else null
+
+            val iconRes = context.applicationInfo.icon.let { if (it != 0) it else android.R.drawable.ic_dialog_alert }
+
+            val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Notification.Builder(context, channelId)
+            } else {
+                @Suppress("DEPRECATION")
+                Notification.Builder(context)
+            }
+
+            builder.setContentTitle(title)
+                .setContentText(body)
+                .setSmallIcon(iconRes)
+                .setAutoCancel(true)
+                .setPriority(Notification.PRIORITY_HIGH)
+
+            if (pendingIntent != null) {
+                builder.setContentIntent(pendingIntent)
+            }
+
+            nm.notify(id, builder.build())
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun cancelNativeNotification(id: Int) {
+        try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            nm?.cancel(id)
+        } catch (_: Exception) {}
     }
 
     /// StreamHandler untuk 50 Hz Magnetometer (Survei geomagnetik murni)
