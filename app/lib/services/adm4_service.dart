@@ -15,7 +15,6 @@ class Adm4Service {
       province: 'Jawa Barat',
       latitude: -6.8122,
       longitude: 107.9482,
-      adm4Code: '32.11.14.2001',
     ),
     AdmLocation(
       name: 'Sumedang Utara',

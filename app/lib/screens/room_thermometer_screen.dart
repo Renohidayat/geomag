@@ -134,10 +134,13 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
     );
   }
 
-  Future<void> _loadOutdoorWeather() async {
+  Future<void> _loadOutdoorWeather({bool forceRefresh = false}) async {
     setState(() => _isLoadingWeather = true);
     try {
-      final data = await _climateService.fetchOutdoorWeatherForLocation(_selectedLocation);
+      final data = await _climateService.fetchOutdoorWeatherForLocation(
+        _selectedLocation,
+        forceRefresh: forceRefresh,
+      );
       if (mounted) {
         setState(() {
           _outdoorWeather = data;
@@ -151,7 +154,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
     }
   }
 
-  /// Mengambil lokasi GPS aktual dan memuat cuaca lokasi tersebut.
+  /// Mengambil lokasi GPS aktual dan memuat cuaca lokasi tersebut secara live.
   Future<void> _fetchCurrentGpsLocation() async {
     setState(() => _isFetchingGps = true);
     try {
@@ -161,7 +164,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
           _selectedLocation = loc;
           _isFetchingGps = false;
         });
-        _loadOutdoorWeather();
+        _loadOutdoorWeather(forceRefresh: true);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Lokasi GPS terdeteksi: ${loc.displayName}'),
@@ -305,8 +308,12 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
         currentIndex: _currentTabIndex,
         onTap: (index) {
           setState(() => _currentTabIndex = index);
-          if (index == 1 && _outdoorWeather == null) {
-            _loadOutdoorWeather();
+          if (index == 1) {
+            final shouldRefresh = _outdoorWeather == null ||
+                DateTime.now().difference(_outdoorWeather!.lastUpdated).inMinutes >= 5;
+            if (shouldRefresh) {
+              _loadOutdoorWeather(forceRefresh: true);
+            }
           }
         },
         selectedItemColor: const Color(0xFF00A8B5),
@@ -1184,7 +1191,10 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                         ],
                       ),
                       Text(
-                        _selectedLocation.displayName,
+                        _selectedLocation.displayName +
+                            (weather != null && weather.elevationM != null
+                                ? ' · ${weather.elevationM!.toStringAsFixed(0)} m dpl'
+                                : ''),
                         style: TextStyle(
                           fontSize: 11,
                           color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
@@ -1245,7 +1255,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
 
             const SizedBox(height: 16),
 
-            // Grid 4 Detail Parameter Luar Ruangan
+            // Grid 6 Parameter Lengkap Luar Ruangan
             Row(
               children: [
                 Expanded(
@@ -1278,7 +1288,36 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                     icon: Icons.air_rounded,
                     iconColor: const Color(0xFF26A69A),
                     title: 'Kecepatan Angin',
-                    value: '${weather.windSpeedKmh.toStringAsFixed(1)} km/j',
+                    value:
+                        '${weather.windSpeedKmh.toStringAsFixed(1)} km/j${weather.windDirectionText != null ? " (${weather.windDirectionText})" : ""}',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildMetricTile(
+                    theme: theme,
+                    icon: Icons.umbrella_rounded,
+                    iconColor: const Color(0xFF42A5F5),
+                    title: 'Curah Hujan',
+                    value: weather.precipitationMm != null && weather.precipitationMm! > 0
+                        ? '${weather.precipitationMm!.toStringAsFixed(1)} mm/j'
+                        : '0,0 mm (Nihil)',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildMetricTile(
+                    theme: theme,
+                    icon: Icons.landscape_rounded,
+                    iconColor: const Color(0xFF8D6E63),
+                    title: 'Elevasi Wilayah',
+                    value: weather.elevationM != null
+                        ? '${weather.elevationM!.toStringAsFixed(0)} m dpl'
+                        : '--',
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1288,7 +1327,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                     icon: Icons.cloud_outlined,
                     iconColor: const Color(0xFFFFA000),
                     title: 'Sumber Data',
-                    value: weather.sourceLabel.split(' ').first,
+                    value: weather.isLive ? 'Online Real-Time' : 'Offline Cache',
                   ),
                 ),
               ],
@@ -1296,11 +1335,21 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
             const SizedBox(height: 16),
 
             // Tombol Perbarui Cuaca
-            OutlinedButton.icon(
-              onPressed: _loadOutdoorWeather,
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Perbarui Cuaca Live'),
-              style: OutlinedButton.styleFrom(
+            ElevatedButton.icon(
+              onPressed: _isLoadingWeather ? null : () => _loadOutdoorWeather(forceRefresh: true),
+              icon: _isLoadingWeather
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.refresh_rounded, size: 18),
+              label: Text(_isLoadingWeather
+                  ? 'Memperbarui Cuaca Live...'
+                  : 'Perbarui Cuaca Live Sekarang'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00A8B5),
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
@@ -1509,6 +1558,22 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                 fontSize: 13,
               ),
             ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.sync_rounded, size: 12, color: Colors.white70),
+              const SizedBox(width: 4),
+              Text(
+                'Live Terkini: ${weather.lastUpdated.hour.toString().padLeft(2, '0')}:${weather.lastUpdated.minute.toString().padLeft(2, '0')} WIB',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
         ],
       ),

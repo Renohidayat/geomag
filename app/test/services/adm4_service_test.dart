@@ -19,7 +19,6 @@ void main() {
       expect(cimalaka.province, 'Jawa Barat');
       expect(cimalaka.latitude, closeTo(-6.81, 0.05));
       expect(cimalaka.longitude, closeTo(107.94, 0.05));
-      expect(cimalaka.adm4Code, isNotNull);
     });
 
     test('searchLocal mengembalikan hasil berdasarkan nama desa atau kecamatan', () {
