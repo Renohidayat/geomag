@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 
 import '../models/device_thermal_sample.dart';
 import '../models/magnetometer_sample.dart';
+import '../models/weather_models.dart';
+import '../services/adm4_service.dart';
 import '../services/device_thermal_service.dart';
+import '../services/location_service.dart';
 import '../services/magnetometer_service.dart';
 import '../services/room_climate_service.dart';
 import '../services/thermal_state_estimator.dart';
@@ -14,12 +17,14 @@ import '../services/thermal_state_estimator.dart';
 ///
 /// Dibuat menyerupai antarmuka "Digital Thermometer: Room Temperature"
 /// dengan Dial Meter melingkar, indikator Panas Perangkat, kompensasi panas dinamis,
-/// serta cuaca luar ruangan langsung via Open-Meteo API.
+/// deteksi lokasi GPS real-time, hirarki adm4 desa/kecamatan, dan cuaca terpadu BMKG / Open-Meteo.
 class RoomThermometerScreen extends StatefulWidget {
   final MagnetometerService? service;
   final RoomClimateService? climateService;
   final DeviceThermalService? thermalService;
   final ThermalStateEstimator? thermalEstimator;
+  final LocationService? locationService;
+  final Adm4Service? adm4Service;
 
   const RoomThermometerScreen({
     super.key,
@@ -27,6 +32,8 @@ class RoomThermometerScreen extends StatefulWidget {
     this.climateService,
     this.thermalService,
     this.thermalEstimator,
+    this.locationService,
+    this.adm4Service,
   });
 
   @override
@@ -38,6 +45,8 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
   late final RoomClimateService _climateService;
   late final DeviceThermalService _thermalService;
   late final ThermalStateEstimator _thermalEstimator;
+  late final LocationService _locationService;
+  late final Adm4Service _adm4Service;
 
   StreamSubscription<MagnetometerSample>? _subscription;
   StreamSubscription<DeviceThermalSample>? _thermalSubscription;
@@ -52,10 +61,11 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
   bool _isFahrenheit = false;
   double _calibrationOffsetC = 0.0;
 
-  // State Luar Ruangan (Outdoor Weather)
-  CityLocation _selectedCity = RoomClimateService.popularCities.first;
+  // State Luar Ruangan (Outdoor Weather & Adm4 / GPS)
+  late AdmLocation _selectedLocation;
   OutdoorWeatherData? _outdoorWeather;
   bool _isLoadingWeather = false;
+  bool _isFetchingGps = false;
 
   @override
   void initState() {
@@ -64,6 +74,11 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
     _climateService = widget.climateService ?? RoomClimateService();
     _thermalService = widget.thermalService ?? DeviceThermalService();
     _thermalEstimator = widget.thermalEstimator ?? ThermalStateEstimator();
+    _locationService = widget.locationService ?? LocationService();
+    _adm4Service = widget.adm4Service ?? Adm4Service();
+
+    // Default lokasi: Cimalaka, Sumedang (Jawa Barat)
+    _selectedLocation = Adm4Service.defaultLocations.first;
 
     _initThermalService();
     _subscribeSensors();
@@ -121,12 +136,80 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
 
   Future<void> _loadOutdoorWeather() async {
     setState(() => _isLoadingWeather = true);
-    final data = await _climateService.fetchOutdoorWeather(_selectedCity);
-    if (mounted) {
-      setState(() {
-        _outdoorWeather = data;
-        _isLoadingWeather = false;
-      });
+    try {
+      final data = await _climateService.fetchOutdoorWeatherForLocation(_selectedLocation);
+      if (mounted) {
+        setState(() {
+          _outdoorWeather = data;
+          _isLoadingWeather = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoadingWeather = false);
+      }
+    }
+  }
+
+  /// Mengambil lokasi GPS aktual dan memuat cuaca lokasi tersebut.
+  Future<void> _fetchCurrentGpsLocation() async {
+    setState(() => _isFetchingGps = true);
+    try {
+      final loc = await _locationService.getCurrentGpsLocation();
+      if (loc != null && mounted) {
+        setState(() {
+          _selectedLocation = loc;
+          _isFetchingGps = false;
+        });
+        _loadOutdoorWeather();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lokasi GPS terdeteksi: ${loc.displayName}'),
+            backgroundColor: const Color(0xFF00A8B5),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } on LocationServiceDisabledException {
+      if (mounted) {
+        setState(() => _isFetchingGps = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Layanan lokasi (GPS) di HP dinonaktifkan. Silakan aktifkan GPS.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } on LocationPermissionDeniedException catch (e) {
+      if (mounted) {
+        setState(() => _isFetchingGps = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } on LocationPermissionPermanentlyDeniedException catch (e) {
+      if (mounted) {
+        setState(() => _isFetchingGps = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isFetchingGps = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal mendeteksi lokasi GPS: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
     }
   }
 
@@ -1041,9 +1124,9 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
         children: [
-          // Bar Pemilih Lokasi Kota
+          // Bar Pemilih Lokasi Wilayah & GPS
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
               borderRadius: BorderRadius.circular(16),
@@ -1053,9 +1136,13 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
             ),
             child: Row(
               children: [
-                const Icon(
-                  Icons.location_on_rounded,
-                  color: Color(0xFF00A8B5),
+                Icon(
+                  _selectedLocation.isGpsLocation
+                      ? Icons.my_location_rounded
+                      : Icons.location_on_rounded,
+                  color: _selectedLocation.isGpsLocation
+                      ? const Color(0xFF00E676)
+                      : const Color(0xFF00A8B5),
                   size: 24,
                 ),
                 const SizedBox(width: 10),
@@ -1063,27 +1150,78 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        _selectedCity.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                        ),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _selectedLocation.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (_selectedLocation.isGpsLocation) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF00E676).withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFF00E676), width: 0.8),
+                              ),
+                              child: const Text(
+                                'GPS',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF00E676),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       Text(
-                        _selectedCity.province,
+                        _selectedLocation.displayName,
                         style: TextStyle(
                           fontSize: 11,
                           color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-                ActionChip(
-                  avatar: const Icon(Icons.swap_horiz_rounded, size: 16),
-                  label: const Text('Ganti Kota', style: TextStyle(fontSize: 12)),
-                  onPressed: _showCityPickerModal,
+                const SizedBox(width: 8),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton.filledTonal(
+                      tooltip: 'Deteksi GPS Saya',
+                      onPressed: _isFetchingGps ? null : _fetchCurrentGpsLocation,
+                      icon: _isFetchingGps
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.my_location_rounded, size: 18),
+                      style: IconButton.styleFrom(
+                        backgroundColor: _selectedLocation.isGpsLocation
+                            ? const Color(0xFF00E676).withValues(alpha: 0.2)
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    ActionChip(
+                      avatar: const Icon(Icons.search_rounded, size: 16),
+                      label: const Text('Cari', style: TextStyle(fontSize: 12)),
+                      onPressed: _showLocationPickerModal,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1100,6 +1238,11 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
             ),
           ] else if (weather != null) ...[
             _buildOutdoorWeatherHeroCard(theme, weather),
+
+            // Slider Prakiraan Cuaca Tiap Jam (24 Jam)
+            if (weather.hourlyForecasts.isNotEmpty)
+              _buildHourlyForecastSection(theme, weather.hourlyForecasts),
+
             const SizedBox(height: 16),
 
             // Grid 4 Detail Parameter Luar Ruangan
@@ -1144,8 +1287,8 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                     theme: theme,
                     icon: Icons.cloud_outlined,
                     iconColor: const Color(0xFFFFA000),
-                    title: 'Status Data',
-                    value: weather.isLive ? 'Online Live' : 'Klimatologi',
+                    title: 'Sumber Data',
+                    value: weather.sourceLabel.split(' ').first,
                   ),
                 ),
               ],
@@ -1170,6 +1313,103 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
     );
   }
 
+  /// Slider Prakiraan Cuaca Jam-jaman (24 Jam ke Depan)
+  Widget _buildHourlyForecastSection(ThemeData theme, List<HourlyForecast> hourly) {
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.access_time_rounded, size: 16, color: Color(0xFF00A8B5)),
+              const SizedBox(width: 6),
+              const Text(
+                'Prakiraan Tiap Jam (24 Jam)',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              const Spacer(),
+              Text(
+                '${hourly.length} titik waktu',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 104,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: hourly.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final h = hourly[index];
+                final temp = _isFahrenheit ? h.tempF : h.tempC;
+                final hourStr = '${h.time.hour.toString().padLeft(2, '0')}:00';
+
+                return Container(
+                  width: 74,
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        hourStr,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                      ),
+                      Text(
+                        h.weatherEmoji,
+                        style: const TextStyle(fontSize: 22),
+                      ),
+                      Text(
+                        '${_formatTemp(temp)}°${_isFahrenheit ? "F" : "C"}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        h.weatherCondition,
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildOutdoorWeatherHeroCard(ThemeData theme, OutdoorWeatherData weather) {
     const cardBgColor = Color(0xFF00A8B5);
     final tempValue = _isFahrenheit ? weather.temperatureF : weather.temperatureC;
@@ -1187,23 +1427,49 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
           ),
         ],
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
       child: Column(
         children: [
-          Text(
-            'Suhu Luar Ruangan (${weather.cityName})',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
+          // Header: Nama Wilayah + Badge Sumber Cuaca
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  weather.district != null
+                      ? '${weather.cityName} (${weather.district})'
+                      : weather.cityName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  weather.sourceLabel,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           Text(
             weather.weatherEmoji,
             style: const TextStyle(fontSize: 54),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1211,7 +1477,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
               Text(
                 _formatTemp(tempValue),
                 style: const TextStyle(
-                  fontSize: 56,
+                  fontSize: 54,
                   fontWeight: FontWeight.w900,
                   color: Colors.white,
                   height: 1.0,
@@ -1249,8 +1515,8 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
     );
   }
 
-  /// Modal Pemilihan Kota / Lokasi
-  void _showCityPickerModal() {
+  /// Modal Pemilihan Wilayah Administratif Indonesia (Desa / Kecamatan / Kota & Online Search)
+  void _showLocationPickerModal() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1259,17 +1525,18 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
       ),
       builder: (context) {
         String searchQuery = '';
+        bool isSearchingOnline = false;
+        List<AdmLocation>? onlineResults;
+
         return StatefulBuilder(
           builder: (context, setModalState) {
-            final filteredCities = RoomClimateService.popularCities.where((c) {
-              return c.name.toLowerCase().contains(searchQuery.toLowerCase()) ||
-                  c.province.toLowerCase().contains(searchQuery.toLowerCase());
-            }).toList();
+            final localMatches = _adm4Service.searchLocal(searchQuery);
+            final displayList = onlineResults ?? localMatches;
 
             return DraggableScrollableSheet(
-              initialChildSize: 0.7,
+              initialChildSize: 0.75,
               minChildSize: 0.4,
-              maxChildSize: 0.9,
+              maxChildSize: 0.95,
               expand: false,
               builder: (context, scrollController) {
                 return Padding(
@@ -1286,14 +1553,50 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                       ),
                       const SizedBox(height: 14),
                       const Text(
-                        'Pilih Kota / Lokasi Cuaca',
+                        'Pilih Wilayah Cuaca',
                         style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 12),
+
+                      // Tombol Shortcut Lokasi GPS Saya
+                      ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00A8B5).withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.my_location_rounded, color: Color(0xFF00A8B5)),
+                        ),
+                        title: const Text(
+                          'Gunakan Lokasi GPS Saya Saat Ini',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        subtitle: const Text('Deteksi otomatis koordinat & nama desa terdekat'),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _fetchCurrentGpsLocation();
+                        },
+                      ),
+                      const Divider(height: 16),
+
+                      // Input Pencarian
                       TextField(
                         decoration: InputDecoration(
-                          hintText: 'Cari nama kota atau provinsi...',
+                          hintText: 'Cari desa, kecamatan, kabupaten, atau provinsi...',
                           prefixIcon: const Icon(Icons.search_rounded),
+                          suffixIcon: searchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear_rounded),
+                                  onPressed: () {
+                                    setModalState(() {
+                                      searchQuery = '';
+                                      onlineResults = null;
+                                    });
+                                  },
+                                )
+                              : null,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
@@ -1303,35 +1606,107 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                           ),
                         ),
                         onChanged: (val) {
-                          setModalState(() => searchQuery = val);
+                          setModalState(() {
+                            searchQuery = val;
+                            onlineResults = null;
+                          });
                         },
                       ),
                       const SizedBox(height: 10),
+
+                      // Daftar Lokasi
                       Expanded(
                         child: ListView.separated(
                           controller: scrollController,
-                          itemCount: filteredCities.length,
+                          itemCount: displayList.length + (searchQuery.trim().isNotEmpty && onlineResults == null ? 1 : 0),
                           separatorBuilder: (_, _) => const Divider(height: 1),
                           itemBuilder: (context, index) {
-                            final city = filteredCities[index];
-                            final isSelected = city.name == _selectedCity.name;
+                            // Opsi pencarian online jika di paling bawah
+                            if (index == displayList.length) {
+                              return ListTile(
+                                leading: isSearchingOnline
+                                    ? const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.travel_explore_rounded, color: Color(0xFF00A8B5)),
+                                title: Text(
+                                  'Cari "$searchQuery" di seluruh pelosok Indonesia...',
+                                  style: const TextStyle(
+                                    color: Color(0xFF00A8B5),
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                subtitle: const Text('Cari nama desa, dusun, kelurahan via Geocoding daring'),
+                                onTap: isSearchingOnline
+                                    ? null
+                                    : () async {
+                                        setModalState(() => isSearchingOnline = true);
+                                        final res = await _adm4Service.searchOnline(searchQuery);
+                                        setModalState(() {
+                                          onlineResults = res;
+                                          isSearchingOnline = false;
+                                        });
+                                      },
+                              );
+                            }
+
+                            final loc = displayList[index];
+                            final isSelected = loc.name == _selectedLocation.name &&
+                                loc.province == _selectedLocation.province;
 
                             return ListTile(
                               leading: Icon(
-                                Icons.location_city_rounded,
+                                loc.isGpsLocation
+                                    ? Icons.my_location_rounded
+                                    : (loc.adm4Code != null
+                                        ? Icons.verified_rounded
+                                        : Icons.location_on_outlined),
                                 color: isSelected
                                     ? const Color(0xFF00A8B5)
                                     : Colors.grey,
                               ),
-                              title: Text(
-                                city.name,
-                                style: TextStyle(
-                                  fontWeight: isSelected
-                                      ? FontWeight.bold
-                                      : FontWeight.w500,
-                                ),
+                              title: Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      loc.name,
+                                      style: TextStyle(
+                                        fontWeight: isSelected
+                                            ? FontWeight.bold
+                                            : FontWeight.w500,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (loc.adm4Code != null) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF00A8B5).withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Text(
+                                        'BMKG',
+                                        style: TextStyle(
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF00A8B5),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
-                              subtitle: Text(city.province),
+                              subtitle: Text(
+                                loc.displayName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11),
+                              ),
                               trailing: isSelected
                                   ? const Icon(
                                       Icons.check_circle_rounded,
@@ -1340,7 +1715,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                                   : null,
                               onTap: () {
                                 setState(() {
-                                  _selectedCity = city;
+                                  _selectedLocation = loc;
                                 });
                                 Navigator.pop(context);
                                 _loadOutdoorWeather();
@@ -1557,8 +1932,47 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                   const Text(
                     '1. Letakkan ponsel di atas meja datar selama 2-3 menit tanpa disentuh agar suhu baterai menyatu dengan suhu udara ruangan.\n\n'
                     '2. Hindari mengukur saat ponsel sedang di-charge atau baru saja memainkan game berat untuk mencegah bias suhu internal.\n\n'
-                    '3. Pada tab Luar Ruangan, Anda dapat mengganti kota untuk melihat prakiraan cuaca live dan suhu aktual di seluruh Indonesia.',
+                    '3. Pada tab Luar Ruangan, gunakan tombol GPS untuk deteksi posisi otomatis atau cari wilayah hingga tingkat desa/kecamatan.',
                     style: TextStyle(fontSize: 12, height: 1.5),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Sumber Data & Lisensi Atribusi
+          Card(
+            elevation: 0,
+            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded, color: Color(0xFF00A8B5)),
+                      SizedBox(width: 8),
+                      Text(
+                        'Sumber Data & Atribusi',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '• Prakiraan Cuaca Utama: BMKG (Badan Meteorologi, Klimatologi, dan Geofisika Republik Indonesia) - Data Prakiraan Cuaca Adm4 Wilayah.\n'
+                    '• Model Cuaca Global: Open-Meteo Weather API (Lisensi CC BY 4.0 - https://open-meteo.com).\n'
+                    '• Geocoding Wilayah: OpenStreetMap Contributors (ODbL) & Basis Data Wilayah Kemendagri RI.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      height: 1.5,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
                   ),
                 ],
               ),

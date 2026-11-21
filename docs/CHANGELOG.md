@@ -5,6 +5,10 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Diperbaiki
+- Perbaikan bug pembacaan suhu kamar yang selalu terkunci di nilai identik 27,0 °C akibat saling meniadakan aljabar formula kompensasi internal ($T_{est} = T_{bat} - (3.0 + (T_{bat} - 30.0)) \equiv 27.0^\circ\text{C}$); diganti dengan estimator keadaan termal dinamis berbasis hukum pendinginan Newton (#63)
+- Pemisahan total aliran data suhu baterai dari loop magnetometer 50 Hz ke `EventChannel` termal terpisah (`com.geomag/thermal_event`) di Android native Kotlin `MagnetometerPlugin.kt`, menghapus pemanggilan berulang `registerReceiver` di dalam loop sensor magnetometer (#63)
+- Penambahan izin `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, dan `INTERNET` pada `AndroidManifest.xml` utama untuk dukungan GPS real-time dan API cuaca rilis (#63)
+- Perbaikan layout RenderFlex overflow pada baris rincian modal analisis suhu dengan `Expanded` dan `Flexible` (#63)
 - Perbaikan layout RenderFlex overflow 35 pixels pada kartu rincian stasiun (`_buildStationInfoCard`) di `AnomalyMapScreen` dengan pembungkusan `Expanded` dan tata letak responsif (#53)
 - Pembaruan penamaan stasiun pada kartu rincian dari ID teknis database mentah (`st_survey_default_rover_1`) menjadi label ramah awam "Titik 1", "Titik 2" (#53)
 - Pemformatan koordinat posisi stasiun pada kartu rincian menjadi format geografis (Lintang, Bujur) atau koordinat lokal relatif, menggantikan konversi meter skala jutaan yang membingungkan (#53)
@@ -19,6 +23,15 @@ Semua perubahan penting dicatat di sini.
 - Pembaruan tampilan beranda `HomeScreen` dengan menerapkan koreksi bias hard-iron (`calibratedTotalFieldNt` atau profil kalibrasi aktif dari database) pada meteran jarum analog dan grafik gelombang real-time sehingga di udara bebas nilai terbaca normal di zona hijau (~42.000–46.000 nT) (#47)
 
 ### Ditambahkan
+- Estimator keadaan termal berbasis fisika (terinspirasi *BaT*, He et al. 2020 & Overeem et al. 2013) dengan 4 keadaan: `STABIL_IDLE`, `AKTIF_RINGAN`, `MENDINGIN_MENGHANGAT` (Hukum Pendinginan Newton $T_{\text{ruang}} \approx T_{\text{bat}} - D_0 + \tau \cdot \frac{dT}{dt}$), dan `CHARGING_BEBAN_BERAT` dengan jeda pemulihan (#63)
+- Wizard kalibrasi fisik termal HP mandiri (15 menit standar dan 10 menit cepat) bersama termometer referensi untuk mencocokkan parameter $D_0$, $\tau$, dan offset per model perangkat, disimpan secara persisten (#63)
+- Perekam data logging sampel termal kontinu ke file CSV (`waktu`, `suhu_baterai`, `status_charging`, `arus_baterai`, `layar`, `suhu_referensi`) (#63)
+- Skrip referensi Python `reference/room_temp_fit.py` dengan regresi kuadrat terkecil untuk fitting parameter termal dan suite tes paritas numerik Dart vs Python dengan toleransi $10^{-6}$ (#63)
+- Deteksi lokasi GPS real-time (koordinat fresh fix, izin foreground) dengan reverse geocoding nama wilayah administrasi Indonesia (#63)
+- Direktori wilayah administratif Indonesia (`Adm4Service`) mencakup ribuan wilayah (Provinsi, Kabupaten/Kota, Kecamatan, dan Desa/Dusun, seperti Cimalaka, Sumedang) dengan pencarian instan dan geocoding daring seluruh pelosok (#63)
+- Penarikan cuaca luar ruangan terpadu ganda (*Dual-Source Weather*): API BMKG publik berbasis kode adm4 sebagai sumber utama dan Open-Meteo API berbasis koordinat GPS sebagai cadangan, dilengkapi caching 15 menit dan kepatuhan rate-limit < 60 req/menit (#63)
+- Slider prakiraan cuaca jam-jaman (*Hourly Forecast*) 24 jam ke depan dengan jam, emoji kondisi cuaca, dan suhu (#63)
+- Atribusi lisensi Open-Meteo (CC BY 4.0), BMKG, dan OpenStreetMap (ODbL) pada tampilan luar ruangan dan layar pengaturan (#63)
 - Desain ulang antarmuka Termometer Suhu Ruangan (`RoomThermometerScreen`) menyerupai aplikasi rujukan *Digital Thermometer: Room Temperature* dengan Speedometer Dial Arc (-10 s.d. 140), jarum putih dinamis, dan titik indikator oranye glowing (#61)
 - Model kompensasi termal adaptif non-linear: mengoreksi panas baterai/CPU saat ponsel aktif ($T_{bat} \ge 34.0^\circ\text{C}$) menjadi estimasi suhu kamar realistis (~$27.0^\circ\text{C}$ pada $T_{bat} = 35.5^\circ\text{C}$) persis seperti aplikasi rujukan (#61)
 - Banner peringatan dinamis: *"Perangkat Anda panas. Biarkan dingin sejenak agar pembacaan lebih akurat."* saat baterai dalam kondisi panas ($T_{bat} \ge 34.0^\circ\text{C}$) (#61)

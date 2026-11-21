@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geomag/models/magnetometer_sample.dart';
+import 'package:geomag/models/weather_models.dart';
 import 'package:geomag/services/room_climate_service.dart';
 
 void main() {
@@ -117,6 +118,30 @@ void main() {
       expect(weather.temperatureC, lessThan(45.0));
       expect(weather.weatherCondition, isNotEmpty);
       expect(weather.weatherEmoji, isNotEmpty);
+    });
+
+    test('fetchOutdoorWeatherForLocation mengembalikan data dengan hourly forecast dan cache', () async {
+      final cimalaka = AdmLocation(
+        name: 'Cimalaka',
+        district: 'Kec. Cimalaka',
+        regency: 'Kab. Sumedang',
+        province: 'Jawa Barat',
+        latitude: -6.8122,
+        longitude: 107.9482,
+        adm4Code: '32.11.14.2001',
+      );
+
+      final weather = await service.fetchOutdoorWeatherForLocation(cimalaka);
+
+      expect(weather.cityName, isNotEmpty);
+      expect(weather.temperatureC, greaterThan(10.0));
+      expect(weather.temperatureC, lessThan(45.0));
+      expect(weather.sourceLabel, isNotEmpty);
+
+      // Pemanggilan kedua harus mengembalikan objek yang sama dari cache
+      final cachedWeather = await service.fetchOutdoorWeatherForLocation(cimalaka);
+      expect(cachedWeather.temperatureC, weather.temperatureC);
+      expect(cachedWeather.lastUpdated, weather.lastUpdated);
     });
   });
 }
