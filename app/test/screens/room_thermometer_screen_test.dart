@@ -136,7 +136,7 @@ void main() {
       expect(find.text('°C'), findsWidgets);
     });
 
-    testWidgets('Pindah ke tab Luar Ruangan dan membuka pemilih kota',
+    testWidgets('Pindah ke tab Luar Ruangan dan membuka pemilih wilayah adm4/GPS',
         (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -149,26 +149,27 @@ void main() {
       await tester.tap(find.text('Luar Ruangan'));
       await tester.pumpAndSettle();
 
-      // Memeriksa elemen lokasi
-      expect(find.text('Jakarta Pusat'), findsOneWidget);
-      expect(find.text('Ganti Kota'), findsOneWidget);
+      // Memeriksa elemen lokasi bawaan (Cimalaka, Sumedang)
+      expect(find.text('Cimalaka'), findsWidgets);
+      expect(find.text('Cari'), findsOneWidget);
 
-      // Ketuk tombol Ganti Kota
-      await tester.tap(find.text('Ganti Kota'));
+      // Ketuk tombol Cari
+      await tester.tap(find.text('Cari'));
       await tester.pumpAndSettle();
 
-      // Memeriksa modal dialog daftar kota muncul
-      expect(find.text('Pilih Kota / Lokasi Cuaca'), findsOneWidget);
-      expect(find.text('Bandung'), findsOneWidget);
+      // Memeriksa modal dialog daftar wilayah muncul
+      expect(find.text('Pilih Wilayah Cuaca'), findsOneWidget);
+      expect(find.text('Gunakan Lokasi GPS Saya Saat Ini'), findsOneWidget);
+      expect(find.text('Sumedang Utara'), findsOneWidget);
 
-      // Pilih kota Bandung
-      await tester.tap(find.text('Bandung'));
+      // Pilih Sumedang Utara
+      await tester.tap(find.text('Sumedang Utara'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Bandung'), findsOneWidget);
+      expect(find.text('Sumedang Utara'), findsWidgets);
     });
 
-    testWidgets('Pindah ke tab Pengaturan dan menampilkan slider kalibrasi',
+    testWidgets('Pindah ke tab Pengaturan dan menampilkan kalibrasi termal serta atribusi',
         (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -181,7 +182,9 @@ void main() {
       await tester.tap(find.text('Pengaturan'));
       await tester.pumpAndSettle();
 
+      expect(find.text('Kalibrasi Termal Fisik HP'), findsOneWidget);
       expect(find.text('Kalibrasi Offset Suhu (±3.0 °C)'), findsOneWidget);
+      expect(find.text('Sumber Data & Atribusi'), findsOneWidget);
       expect(find.text('Reset'), findsOneWidget);
     });
 

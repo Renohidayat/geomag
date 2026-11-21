@@ -2,7 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import '../models/device_thermal_sample.dart';
 import '../models/magnetometer_sample.dart';
+import '../models/weather_models.dart';
+import 'thermal_state_estimator.dart';
 
 /// Kategori kenyamanan termal & kondisi hawa ruangan/lingkungan.
 enum RoomComfortLevel {
@@ -50,9 +53,10 @@ class CityLocation {
   });
 }
 
-/// Data cuaca luar ruangan terpadu.
+/// Data cuaca luar ruangan terpadu (BMKG / Open-Meteo).
 class OutdoorWeatherData {
   final String cityName;
+  final String? district;
   final String province;
   final double temperatureC;
   final double temperatureF;
@@ -64,9 +68,14 @@ class OutdoorWeatherData {
   final String weatherEmoji;
   final bool isLive;
   final DateTime lastUpdated;
+  final String sourceLabel;
+  final List<HourlyForecast> hourlyForecasts;
+  final String? adm4Code;
+  final bool isGps;
 
   const OutdoorWeatherData({
     required this.cityName,
+    this.district,
     required this.province,
     required this.temperatureC,
     required this.temperatureF,
@@ -78,16 +87,27 @@ class OutdoorWeatherData {
     required this.weatherEmoji,
     required this.isLive,
     required this.lastUpdated,
+    this.sourceLabel = 'Model Open-Meteo (CC BY 4.0)',
+    this.hourlyForecasts = const [],
+    this.adm4Code,
+    this.isGps = false,
   });
+
+  String get fullLocationTitle {
+    if (district != null && district!.isNotEmpty) {
+      return '$cityName ($district, $province)';
+    }
+    return '$cityName, $province';
+  }
 }
 
 /// Data hasil analisis termometer ruangan dan detektor iklim instan.
 class RoomClimateData {
-  /// Estimasi suhu udara ambien terkalibrasi (°C).
-  final double ambientTempC;
+  /// Estimasi suhu udara ambien terkalibrasi (°C), null jika sensor tidak tersedia.
+  final double? ambientTempC;
 
-  /// Estimasi suhu udara ambien terkalibrasi (°F).
-  final double ambientTempF;
+  /// Estimasi suhu udara ambien terkalibrasi (°F), null jika sensor tidak tersedia.
+  final double? ambientTempF;
 
   /// Suhu sensor perangkat keras (baterai/chipset) (°C).
   final double hardwareTempC;
@@ -135,6 +155,21 @@ class RoomClimateData {
   /// Mode pengukuran: outdoor (luar ruangan) atau indoor (dalam ruangan).
   final bool isOutdoor;
 
+  /// Tingkat ketidakpastian suhu (± °C).
+  final double uncertaintyC;
+
+  /// Label badge status estimator (misal: 'Sensor Hardware', 'Terkalibrasi', 'Belum Dikalibrasi').
+  final String statusBadgeLabel;
+
+  /// Apakah bersumber langsung dari sensor suhu lingkungan hardware.
+  final bool isHardwareSensor;
+
+  /// Laju perubahan suhu (°C/menit).
+  final double slopeCPerMinute;
+
+  /// Arus baterai (mA) jika didukung.
+  final double? currentNowMa;
+
   const RoomClimateData({
     required this.ambientTempC,
     required this.ambientTempF,
@@ -154,6 +189,11 @@ class RoomClimateData {
     required this.isCharging,
     required this.isScreenOn,
     required this.isOutdoor,
+    this.uncertaintyC = 3.0,
+    this.statusBadgeLabel = 'Estimasi dari Baterai',
+    this.isHardwareSensor = false,
+    this.slopeCPerMinute = 0.0,
+    this.currentNowMa,
   });
 }
 
@@ -334,31 +374,23 @@ class RoomClimateService {
 
   /// Menghitung estimasi suhu udara ambien (°C) dari sensor termal ponsel.
   ///
-  /// Menggunakan model disipasi termal adaptif non-linear:
-  /// Saat ponsel dalam keadaan aktif / dipegang tangan, panas baterai mencapai 34°C - 36°C
-  /// akibat beban CPU, layar, dan transfer kalor tubuh.
-  /// Pada aplikasi rujukan (Digital Thermometer), baterai 35.5°C dikompensasi
-  /// menjadi suhu ruangan ~27.0°C (delta 8.5°C).
-  static double estimateAmbientTemp({
+  /// Menggunakan model uncalibrated sementara yang monoton terhadap T_bat:
+  /// T_ruang = T_bat - D0 + offset (D0 = 3.0°C perkiraan kasar).
+  /// Menghasilkan nilai null jika sensor baterai tidak tersedia (<= 0).
+  static double? estimateAmbientTemp({
     required double batteryTempC,
     required bool isCharging,
     required bool isScreenOn,
     double userOffsetC = 0.0,
     bool isOutdoor = false,
   }) {
+    // Hapus fallback 27.0: kembalikan null jika sensor tidak tersedia
     if (batteryTempC <= 0) {
-      return 27.0 + userOffsetC;
+      return null;
     }
 
-    // Delta dasar untuk ponsel dingin/idle (~3.0°C)
+    // Delta dasar uncalibrated (perkiraan kasar)
     double deltaInternal = 3.0;
-
-    // Kompensasi non-linear saat perangkat mulai panas (> 30.0°C)
-    // Formula: untuk T_bat = 35.5°C -> delta = 3.0 + (35.5 - 30.0) * 1.0 = 8.5°C
-    // Hasil estimasi: 35.5 - 8.5 = 27.0°C (persis seperti aplikasi rujukan).
-    if (batteryTempC > 30.0) {
-      deltaInternal += (batteryTempC - 30.0) * 1.0;
-    }
 
     if (isCharging) {
       deltaInternal += 2.0; // Panas reaksi kimia charging
@@ -368,6 +400,7 @@ class RoomClimateService {
       deltaInternal -= 0.5; // Pendinginan konveksi udara luar
     }
 
+    // Model monoton: turunan d(estimated)/d(batteryTempC) = 1.0 > 0
     final estimated = batteryTempC - deltaInternal + userOffsetC;
     return estimated.clamp(-10.0, 60.0);
   }
@@ -397,8 +430,8 @@ class RoomClimateService {
       isOutdoor: isOutdoor,
     );
 
-    final ambientF = celsiusToFahrenheit(ambientC);
-    final hardwareC = sample.batteryTempC > 0 ? sample.batteryTempC : (ambientC + 3.0);
+    final ambientF = ambientC != null ? celsiusToFahrenheit(ambientC) : null;
+    final hardwareC = sample.batteryTempC > 0 ? sample.batteryTempC : 0.0;
     final emfMicroT = sample.totalFieldMicroT;
 
     final thermalState = evaluateThermalState(hardwareC);
@@ -422,25 +455,33 @@ class RoomClimateService {
         ? sample.pressureHpa
         : (1012.8 + sin(sample.timestampNs / 1e11) * 0.4);
 
-    final humidity = estimateHumidityPercent(
-      ambientTempC: ambientC,
-      pressureHpa: pressure,
-    );
+    final humidity = ambientC != null
+        ? estimateHumidityPercent(
+            ambientTempC: ambientC,
+            pressureHpa: pressure,
+          )
+        : 55.0;
 
     // Kualitas udara estimasi (AQI) berbasis suhu dan kestabilan tekanan
-    final aqi = 35 + ((ambientC - 24.0).abs() * 2).toInt().clamp(20, 85);
+    final aqi = ambientC != null
+        ? 35 + ((ambientC - 24.0).abs() * 2).toInt().clamp(20, 85)
+        : 40;
     final aqiLabel = aqi <= 50 ? 'Baik (AQI $aqi)' : 'Sedang (AQI $aqi)';
 
     // Deteksi hawa panas terfokus (Joule heating)
     final isEmfHigh = emfMicroT > kHotspotEmfThresholdMicroT;
-    final isTempHot = ambientC > 31.0;
+    final isTempHot = ambientC != null && ambientC > 31.0;
     final isHotspot = isEmfHigh || (isTempHot && emfMicroT > 55.0);
 
     RoomComfortLevel level;
     String title;
     String desc;
 
-    if (isHotspot) {
+    if (ambientC == null) {
+      level = RoomComfortLevel.comfortable;
+      title = 'Sensor Tidak Tersedia';
+      desc = 'Menunggu data suhu baterai atau sensor hardware...';
+    } else if (isHotspot) {
       level = RoomComfortLevel.hotspot;
       title = '🔥 Hawa Panas Terfokus';
       desc = isEmfHigh
@@ -480,74 +521,380 @@ class RoomClimateService {
       isCharging: sample.isCharging,
       isScreenOn: sample.isScreenOn,
       isOutdoor: isOutdoor,
+      uncertaintyC: 3.0,
+      statusBadgeLabel: 'Belum Dikalibrasi (±3 °C)',
+      isHardwareSensor: false,
+      slopeCPerMinute: 0.0,
+      currentNowMa: null,
     );
   }
 
-  /// Menarik data cuaca luar ruangan langsung dari Open-Meteo API publik.
-  /// Jika tidak ada koneksi internet / timeout (3 detik), akan menggunakan data klimatologis kota.
-  Future<OutdoorWeatherData> fetchOutdoorWeather(CityLocation city) async {
-    try {
-      final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 3);
+  /// Menganalisis estimasi termal presisi dari [ThermalStateEstimator]
+  /// bersama parameter lingkungan menjadi [RoomClimateData].
+  RoomClimateData analyzeWithEstimator({
+    required ThermalEstimationResult estimation,
+    required MagnetometerSample sample,
+    bool isOutdoor = false,
+  }) {
+    final ambientC = estimation.estimatedTempC;
+    final ambientF = ambientC != null ? celsiusToFahrenheit(ambientC) : null;
+    final hardwareC = estimation.hardwareTempC;
+    final emfMicroT = sample.totalFieldMicroT;
 
-      final url = Uri.parse(
-        'https://api.open-meteo.com/v1/forecast?'
-        'latitude=${city.latitude}&longitude=${city.longitude}'
-        '&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,surface_pressure,wind_speed_10m',
-      );
+    final thermalState = evaluateThermalState(hardwareC);
+    String thermalLabel;
+    String? warningMsg;
 
-      final request = await client.getUrl(url);
-      final response = await request.close().timeout(const Duration(seconds: 3));
-
-      if (response.statusCode == 200) {
-        final body = await response.transform(utf8.decoder).join();
-        final json = jsonDecode(body) as Map<String, dynamic>;
-        final current = json['current'] as Map<String, dynamic>?;
-
-        if (current != null) {
-          final tempC = (current['temperature_2m'] as num).toDouble();
-          final humidity = (current['relative_humidity_2m'] as num).toDouble();
-          final feelsLike = (current['apparent_temperature'] as num).toDouble();
-          final code = (current['weather_code'] as num?)?.toInt() ?? 0;
-          final pressure = (current['surface_pressure'] as num?)?.toDouble() ?? 1012.0;
-          final wind = (current['wind_speed_10m'] as num?)?.toDouble() ?? 8.0;
-
-          final (cond, emoji) = _interpretWeatherCode(code);
-
-          return OutdoorWeatherData(
-            cityName: city.name,
-            province: city.province,
-            temperatureC: tempC,
-            temperatureF: celsiusToFahrenheit(tempC),
-            feelsLikeC: feelsLike,
-            humidityPercent: humidity,
-            pressureHpa: pressure,
-            windSpeedKmh: wind,
-            weatherCondition: cond,
-            weatherEmoji: emoji,
-            isLive: true,
-            lastUpdated: DateTime.now(),
-          );
-        }
-      }
-    } catch (_) {
-      // Fallback offline jika tidak ada koneksi internet
+    switch (thermalState) {
+      case DeviceThermalState.normal:
+        thermalLabel = 'Normal';
+        break;
+      case DeviceThermalState.warm:
+        thermalLabel = 'Hangat';
+        break;
+      case DeviceThermalState.hot:
+        thermalLabel = 'Panas';
+        warningMsg = 'Perangkat Anda panas. Biarkan dingin sejenak agar pembacaan lebih akurat.';
+        break;
     }
 
-    // Default offline fallback
-    return OutdoorWeatherData(
-      cityName: city.name,
+    final pressure = sample.pressureHpa > 800.0 && sample.pressureHpa < 1200.0
+        ? sample.pressureHpa
+        : (1012.8 + sin(sample.timestampNs / 1e11) * 0.4);
+
+    final humidity = ambientC != null
+        ? estimateHumidityPercent(
+            ambientTempC: ambientC,
+            pressureHpa: pressure,
+          )
+        : 55.0;
+
+    final aqi = ambientC != null
+        ? 35 + ((ambientC - 24.0).abs() * 2).toInt().clamp(20, 85)
+        : 40;
+    final aqiLabel = aqi <= 50 ? 'Baik (AQI $aqi)' : 'Sedang (AQI $aqi)';
+
+    final isEmfHigh = emfMicroT > kHotspotEmfThresholdMicroT;
+    final isTempHot = ambientC != null && ambientC > 31.0;
+    final isHotspot = isEmfHigh || (isTempHot && emfMicroT > 55.0);
+
+    RoomComfortLevel level;
+    String title;
+    String desc;
+
+    if (ambientC == null) {
+      level = RoomComfortLevel.comfortable;
+      title = 'Sensor Tidak Tersedia';
+      desc = 'Menunggu data pembacaan sensor baterai atau hardware...';
+    } else if (isHotspot) {
+      level = RoomComfortLevel.hotspot;
+      title = '🔥 Hawa Panas Terfokus';
+      desc = isEmfHigh
+          ? 'Medan elektromagnetik lokal terukur ${emfMicroT.toStringAsFixed(1)} µT (melebihi ambang 60 µT). '
+            'Mengindikasikan radiasi Joule Heating dari kabel/adaptor listrik di dekat perangkat.'
+          : 'Suhu ambien ruangan mencapai ${ambientC.toStringAsFixed(1)}°C dengan akumulasi radiasi lokal tinggi.';
+    } else if (ambientC > 27.5) {
+      level = RoomComfortLevel.warm;
+      title = '☀️ Hawa Hangat';
+      desc = 'Suhu ruangan hangat normal (${ambientC.toStringAsFixed(1)}°C). Sirkulasi udara stabil tanpa gangguan radiasi listrik kabel.';
+    } else if (ambientC < 22.0) {
+      level = RoomComfortLevel.cool;
+      title = '❄️ Hawa Dingin & Sejuk';
+      desc = 'Suhu ruangan sejuk (${ambientC.toStringAsFixed(1)}°C). Berada di area hembusan AC atau aliran ventilasi terbuka.';
+    } else {
+      level = RoomComfortLevel.comfortable;
+      title = '🍃 Suhu Nyaman & Sejuk';
+      desc = 'Kondisi iklim ruangan ideal (${ambientC.toStringAsFixed(1)}°C, RH ${humidity.toStringAsFixed(0)}%). Medan elektromagnetik normal (${emfMicroT.toStringAsFixed(1)} µT).';
+    }
+
+    return RoomClimateData(
+      ambientTempC: ambientC,
+      ambientTempF: ambientF,
+      hardwareTempC: hardwareC,
+      thermalState: thermalState,
+      thermalStateLabel: thermalLabel,
+      warningMessage: warningMsg,
+      relativeHumidityPercent: humidity,
+      pressureHpa: pressure,
+      magneticEmfMicroT: emfMicroT,
+      airQualityIndex: aqi,
+      airQualityLabel: aqiLabel,
+      comfortLevel: level,
+      isHotspotDetected: isHotspot,
+      statusTitle: title,
+      statusDescription: desc,
+      isCharging: estimation.isCharging,
+      isScreenOn: estimation.isScreenOn,
+      isOutdoor: isOutdoor,
+      uncertaintyC: estimation.uncertaintyC,
+      statusBadgeLabel: estimation.statusLabel,
+      isHardwareSensor: estimation.isHardwareSensor,
+      slopeCPerMinute: estimation.slopeCPerMinute,
+      currentNowMa: estimation.currentNowMa,
+    );
+  }
+
+  // Cache lokal cuaca dengan TTL 15 menit
+  final Map<String, _CachedWeatherData> _weatherCache = {};
+
+  /// Menarik data cuaca luar ruangan langsung dari Open-Meteo / BMKG API publik (Dual-Source).
+  /// Menjaga batas rate-limit di bawah 60 req/min dengan caching 15 menit.
+  Future<OutdoorWeatherData> fetchOutdoorWeather(CityLocation city) async {
+    final admLoc = AdmLocation(
+      name: city.name,
       province: city.province,
-      temperatureC: city.defaultTempC,
-      temperatureF: celsiusToFahrenheit(city.defaultTempC),
-      feelsLikeC: city.defaultTempC + 2.5,
-      humidityPercent: city.defaultHumidity,
+      latitude: city.latitude,
+      longitude: city.longitude,
+    );
+    return fetchOutdoorWeatherForLocation(admLoc);
+  }
+
+  /// Menarik cuaca dual-source untuk lokasi administratif [AdmLocation].
+  /// - Sumber 1 (Utama): BMKG API jika memiliki kode adm4 (dan respons < 3.5 detik).
+  /// - Sumber 2 (Cadangan): Open-Meteo API berbasis koordinat lat/lon real-time.
+  Future<OutdoorWeatherData> fetchOutdoorWeatherForLocation(AdmLocation location) async {
+    final cacheKey = '${location.latitude.toStringAsFixed(2)}_${location.longitude.toStringAsFixed(2)}_${location.adm4Code ?? ""}';
+
+    // 1. Periksa cache lokal (TTL 15 menit)
+    final cached = _weatherCache[cacheKey];
+    if (cached != null) {
+      final age = DateTime.now().difference(cached.cachedAt);
+      if (age.inMinutes < 15) {
+        return cached.data;
+      }
+    }
+
+    // 2. Coba sumber utama: BMKG API jika memiliki kode wilayah adm4
+    if (location.adm4Code != null && location.adm4Code!.isNotEmpty) {
+      try {
+        final bmkgData = await _fetchBmkgWeather(location);
+        if (bmkgData != null) {
+          _weatherCache[cacheKey] = _CachedWeatherData(data: bmkgData, cachedAt: DateTime.now());
+          return bmkgData;
+        }
+      } catch (_) {
+        // Fallback ke Open-Meteo jika BMKG timeout / error
+      }
+    }
+
+    // 3. Sumber cadangan / global: Open-Meteo API
+    try {
+      final openMeteoData = await _fetchOpenMeteoWeather(location);
+      _weatherCache[cacheKey] = _CachedWeatherData(data: openMeteoData, cachedAt: DateTime.now());
+      return openMeteoData;
+    } catch (_) {
+      // Fallback offline jika kedua API tidak dapat dijangkau
+    }
+
+    // 4. Default Offline Fallback jika tanpa koneksi internet sama sekali
+    final fallbackData = OutdoorWeatherData(
+      cityName: location.name,
+      district: location.district,
+      province: location.province,
+      temperatureC: 25.0,
+      temperatureF: celsiusToFahrenheit(25.0),
+      feelsLikeC: 26.5,
+      humidityPercent: 78.0,
       pressureHpa: 1012.4,
       windSpeedKmh: 9.2,
       weatherCondition: 'Cerah Berawan',
       weatherEmoji: '⛅',
       isLive: false,
       lastUpdated: DateTime.now(),
+      sourceLabel: 'Data Offline Default',
+      adm4Code: location.adm4Code,
+      isGps: location.isGpsLocation,
+    );
+    _weatherCache[cacheKey] = _CachedWeatherData(data: fallbackData, cachedAt: DateTime.now());
+    return fallbackData;
+  }
+
+  /// Menarik data cuaca dari BMKG publik (prakiraan-cuaca adm4)
+  Future<OutdoorWeatherData?> _fetchBmkgWeather(AdmLocation location) async {
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(milliseconds: 3500);
+
+    final url = Uri.parse('https://api.bmkg.go.id/publik/prakiraan-cuaca?adm4=${location.adm4Code}');
+    final request = await client.getUrl(url);
+    request.headers.set('User-Agent', 'GeoMagApp/1.0 (Android)');
+    final response = await request.close().timeout(const Duration(milliseconds: 3500));
+
+    if (response.statusCode != 200) return null;
+
+    final body = await response.transform(utf8.decoder).join();
+    final json = jsonDecode(body) as Map<String, dynamic>;
+    final dataList = json['data'] as List<dynamic>?;
+    if (dataList == null || dataList.isEmpty) return null;
+
+    final cuacaRaw = dataList[0]['cuaca'];
+    final hourlyForecasts = <HourlyForecast>[];
+
+    double currentTempC = 25.0;
+    double currentHumidity = 80.0;
+    String currentCond = 'Berawan';
+    String currentEmoji = '⛅';
+
+    // Ekstraksi slot waktu BMKG (BMKG biasanya mengelompokkan per hari atau deret slot 3-jam)
+    final now = DateTime.now();
+
+    void processSlot(Map<String, dynamic> slot) {
+      final utcTimeStr = slot['datetime'] as String? ?? slot['utc_datetime'] as String?;
+      DateTime slotTime;
+      if (utcTimeStr != null) {
+        slotTime = DateTime.tryParse(utcTimeStr)?.toLocal() ?? now;
+      } else {
+        slotTime = now;
+      }
+
+      final t = (slot['t'] as num?)?.toDouble() ?? 26.0;
+      final hu = (slot['hu'] as num?)?.toDouble() ?? 75.0;
+      currentHumidity = hu;
+      final desc = slot['weather_desc'] as String? ?? 'Berawan';
+      final code = (slot['weather'] as num?)?.toInt() ?? 1;
+      final (cCond, cEmoji) = _interpretWeatherCode(code);
+
+      hourlyForecasts.add(
+        HourlyForecast(
+          time: slotTime,
+          tempC: t,
+          weatherCode: code,
+          weatherCondition: desc.isNotEmpty ? desc : cCond,
+          weatherEmoji: cEmoji,
+        ),
+      );
+    }
+
+    if (cuacaRaw is List) {
+      for (final item in cuacaRaw) {
+        if (item is List) {
+          for (final sub in item) {
+            if (sub is Map<String, dynamic>) processSlot(sub);
+          }
+        } else if (item is Map<String, dynamic>) {
+          processSlot(item);
+        }
+      }
+    }
+
+    if (hourlyForecasts.isNotEmpty) {
+      // Cari slot yang paling dekat dengan waktu saat ini
+      hourlyForecasts.sort((a, b) => (a.time.difference(now).abs()).compareTo(b.time.difference(now).abs()));
+      final nearest = hourlyForecasts.first;
+      currentTempC = nearest.tempC;
+      currentCond = nearest.weatherCondition;
+      currentEmoji = nearest.weatherEmoji;
+
+      // Urutkan kembali kronologis untuk slider 24 jam ke depan
+      hourlyForecasts.sort((a, b) => a.time.compareTo(b.time));
+    }
+
+    final lokasi = json['lokasi'] as Map<String, dynamic>?;
+    final desa = lokasi?['desa'] as String? ?? location.name;
+    final kec = lokasi?['kecamatan'] as String? ?? location.district;
+    final kotkab = lokasi?['kotkab'] as String? ?? location.regency;
+    final prov = lokasi?['provinsi'] as String? ?? location.province;
+
+    return OutdoorWeatherData(
+      cityName: desa,
+      district: kec != null ? 'Kec. $kec' : null,
+      province: kotkab != null ? '$kotkab, $prov' : prov,
+      temperatureC: currentTempC,
+      temperatureF: celsiusToFahrenheit(currentTempC),
+      feelsLikeC: currentTempC + 1.5,
+      humidityPercent: currentHumidity,
+      pressureHpa: 1012.0,
+      windSpeedKmh: 8.0,
+      weatherCondition: currentCond,
+      weatherEmoji: currentEmoji,
+      isLive: true,
+      lastUpdated: DateTime.now(),
+      sourceLabel: 'Prakiraan BMKG',
+      hourlyForecasts: hourlyForecasts.take(8).toList(),
+      adm4Code: location.adm4Code,
+      isGps: location.isGpsLocation,
+    );
+  }
+
+  /// Menarik data cuaca dari Open-Meteo publik
+  Future<OutdoorWeatherData> _fetchOpenMeteoWeather(AdmLocation location) async {
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 4);
+
+    final url = Uri.parse(
+      'https://api.open-meteo.com/v1/forecast?'
+      'latitude=${location.latitude}&longitude=${location.longitude}'
+      '&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,surface_pressure,wind_speed_10m'
+      '&hourly=temperature_2m,relative_humidity_2m,weather_code'
+      '&timezone=auto',
+    );
+
+    final request = await client.getUrl(url);
+    final response = await request.close().timeout(const Duration(seconds: 4));
+
+    if (response.statusCode != 200) {
+      throw HttpException('Open-Meteo HTTP error ${response.statusCode}');
+    }
+
+    final body = await response.transform(utf8.decoder).join();
+    final json = jsonDecode(body) as Map<String, dynamic>;
+    final current = json['current'] as Map<String, dynamic>;
+
+    final tempC = (current['temperature_2m'] as num).toDouble();
+    final humidity = (current['relative_humidity_2m'] as num).toDouble();
+    final feelsLike = (current['apparent_temperature'] as num).toDouble();
+    final code = (current['weather_code'] as num?)?.toInt() ?? 0;
+    final pressure = (current['surface_pressure'] as num?)?.toDouble() ?? 1012.0;
+    final wind = (current['wind_speed_10m'] as num?)?.toDouble() ?? 8.0;
+
+    final (cond, emoji) = _interpretWeatherCode(code);
+
+    // Parse hourly forecast untuk 24 jam ke depan (tiap 3 jam = 8 slot)
+    final hourlyForecasts = <HourlyForecast>[];
+    final hourly = json['hourly'] as Map<String, dynamic>?;
+    if (hourly != null) {
+      final times = hourly['time'] as List<dynamic>? ?? [];
+      final temps = hourly['temperature_2m'] as List<dynamic>? ?? [];
+      final codes = hourly['weather_code'] as List<dynamic>? ?? [];
+
+      final now = DateTime.now();
+      for (int i = 0; i < times.length && hourlyForecasts.length < 8; i += 3) {
+        final tStr = times[i] as String;
+        final tDate = DateTime.tryParse(tStr) ?? now;
+        if (tDate.isAfter(now.subtract(const Duration(hours: 1)))) {
+          final hTemp = (temps[i] as num).toDouble();
+          final hCode = (codes[i] as num?)?.toInt() ?? 0;
+          final (hCond, hEmoji) = _interpretWeatherCode(hCode);
+          hourlyForecasts.add(
+            HourlyForecast(
+              time: tDate,
+              tempC: hTemp,
+              weatherCode: hCode,
+              weatherCondition: hCond,
+              weatherEmoji: hEmoji,
+            ),
+          );
+        }
+      }
+    }
+
+    return OutdoorWeatherData(
+      cityName: location.name,
+      district: location.district,
+      province: location.regency != null ? '${location.regency}, ${location.province}' : location.province,
+      temperatureC: tempC,
+      temperatureF: celsiusToFahrenheit(tempC),
+      feelsLikeC: feelsLike,
+      humidityPercent: humidity,
+      pressureHpa: pressure,
+      windSpeedKmh: wind,
+      weatherCondition: cond,
+      weatherEmoji: emoji,
+      isLive: true,
+      lastUpdated: DateTime.now(),
+      sourceLabel: 'Model Open-Meteo (CC BY 4.0)',
+      hourlyForecasts: hourlyForecasts,
+      adm4Code: location.adm4Code,
+      isGps: location.isGpsLocation,
     );
   }
 
@@ -563,4 +910,15 @@ class RoomClimateService {
     if (code >= 95) return ('Badai Petir', '⚡');
     return ('Cerah Berawan', '⛅');
   }
+}
+
+/// Cache data cuaca dalam memori dengan TTL.
+class _CachedWeatherData {
+  final OutdoorWeatherData data;
+  final DateTime cachedAt;
+
+  const _CachedWeatherData({
+    required this.data,
+    required this.cachedAt,
+  });
 }

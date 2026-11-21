@@ -1,23 +1,30 @@
 package com.geomag.geomag
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.BatteryManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import kotlin.math.abs
 
 class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     private lateinit var context: Context
     private lateinit var methodChannel: MethodChannel
-    private lateinit var eventChannel: EventChannel
+    private lateinit var magnetometerEventChannel: EventChannel
+    private lateinit var thermalEventChannel: EventChannel
 
     private var sensorManager: SensorManager? = null
     private var sensorEventListener: SensorEventListener? = null
@@ -27,7 +34,14 @@ class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     private var pressureSensor: Sensor? = null
     private var pressureListener: SensorEventListener? = null
-    private var lastPressureHpa: Double = -1.0
+
+    // Cache volatile untuk pembacaan O(1) di loop 50 Hz magnetometer
+    @Volatile private var cachedBatteryTempC: Double = -1.0
+    @Volatile private var cachedIsCharging: Boolean = false
+    @Volatile private var cachedIsScreenOn: Boolean = true
+    @Volatile private var cachedCurrentNowMa: Double? = null
+    @Volatile private var cachedAmbientTempHardwareC: Double? = null
+    @Volatile private var cachedPressureHpa: Double = -1.0
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
@@ -36,14 +50,21 @@ class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         methodChannel = MethodChannel(binding.binaryMessenger, "com.geomag/magnetometer_method")
         methodChannel.setMethodCallHandler(this)
 
-        eventChannel = EventChannel(binding.binaryMessenger, "com.geomag/magnetometer_event")
-        eventChannel.setStreamHandler(MagnetometerStreamHandler())
+        magnetometerEventChannel = EventChannel(binding.binaryMessenger, "com.geomag/magnetometer_event")
+        magnetometerEventChannel.setStreamHandler(MagnetometerStreamHandler())
+
+        thermalEventChannel = EventChannel(binding.binaryMessenger, "com.geomag/thermal_event")
+        thermalEventChannel.setStreamHandler(ThermalStreamHandler())
+
+        // Inisialisasi awal nilai baterai sekali saja di background thread / startup
+        refreshBatteryStateOnce()
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        stopListening()
+        stopMagnetometerListening()
         methodChannel.setMethodCallHandler(null)
-        eventChannel.setStreamHandler(null)
+        magnetometerEventChannel.setStreamHandler(null)
+        thermalEventChannel.setStreamHandler(null)
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -56,6 +77,15 @@ class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 val rateHz = call.argument<Int>("rateHz") ?: 50
                 targetDelayUs = if (rateHz > 0) 1_000_000 / rateHz else SensorManager.SENSOR_DELAY_FASTEST
                 result.success(true)
+            }
+            "hasAmbientTemperatureSensor" -> {
+                val sm = sensorManager
+                val hasSensor = sm?.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE) != null
+                result.success(hasSensor)
+            }
+            "getThermalSnapshot" -> {
+                refreshBatteryStateOnce()
+                result.success(buildThermalDataMap())
             }
             else -> result.notImplemented()
         }
@@ -81,34 +111,70 @@ class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         )
     }
 
-    private fun getBatteryTemperature(): Double {
-        return try {
-            val intentFilter = android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED)
+    private fun refreshBatteryStateOnce() {
+        try {
+            val intentFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
             val batteryStatus = context.registerReceiver(null, intentFilter)
-            val temp = batteryStatus?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1) ?: -1
-            if (temp > 0) temp / 10.0 else -1.0
-        } catch (e: Exception) {
-            -1.0
+            updateBatteryFromIntent(batteryStatus)
+        } catch (_: Exception) {}
+    }
+
+    private fun updateBatteryFromIntent(intent: Intent?) {
+        if (intent == null) return
+        val temp = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1)
+        if (temp > 0) {
+            cachedBatteryTempC = temp / 10.0
+        }
+        val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+        cachedIsCharging = (status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                            status == BatteryManager.BATTERY_STATUS_FULL)
+        updateCurrentNow()
+        updateScreenState()
+    }
+
+    private fun updateCurrentNow() {
+        try {
+            val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+            if (bm != null) {
+                val current = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+                // Sebagian vendor melaporkan dalam mikroampere (µA), sebagian dalam mA.
+                // Jika |current| > 10.000, ubah µA ke mA.
+                if (current != Int.MIN_VALUE && current != 0) {
+                    cachedCurrentNowMa = if (abs(current) > 10000) {
+                        current / 1000.0
+                    } else {
+                        current.toDouble()
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun updateScreenState() {
+        try {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+            cachedIsScreenOn = pm?.isInteractive == true
+        } catch (_: Exception) {
+            cachedIsScreenOn = true
         }
     }
 
-    private fun isCharging(): Boolean {
-        return try {
-            val intentFilter = android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED)
-            val batteryStatus = context.registerReceiver(null, intentFilter)
-            val status = batteryStatus?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-            status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
-        } catch (e: Exception) {
-            false
-        }
+    private fun buildThermalDataMap(): Map<String, Any?> {
+        val sm = sensorManager
+        val hasAmbient = sm?.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE) != null
+        return mapOf(
+            "timestampNs" to System.nanoTime(),
+            "batteryTempC" to cachedBatteryTempC,
+            "isCharging" to cachedIsCharging,
+            "isScreenOn" to cachedIsScreenOn,
+            "currentNowMa" to cachedCurrentNowMa,
+            "hasAmbientHardwareSensor" to hasAmbient,
+            "ambientTempHardwareC" to cachedAmbientTempHardwareC,
+            "pressureHpa" to cachedPressureHpa
+        )
     }
 
-    private fun isScreenOn(): Boolean {
-        val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-        return pm?.isInteractive == true
-    }
-
-    private fun stopListening() {
+    private fun stopMagnetometerListening() {
         sensorEventListener?.let { sensorManager?.unregisterListener(it) }
         sensorEventListener = null
         activeSensor = null
@@ -116,9 +182,11 @@ class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         pressureListener?.let { sensorManager?.unregisterListener(it) }
         pressureListener = null
         pressureSensor = null
-        lastPressureHpa = -1.0
+        cachedPressureHpa = -1.0
     }
 
+    /// StreamHandler untuk 50 Hz Magnetometer (Survei geomagnetik murni)
+    /// Tanpa registerReceiver di dalam loop onSensorChanged
     private inner class MagnetometerStreamHandler : EventChannel.StreamHandler {
 
         override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
@@ -142,13 +210,18 @@ class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 return
             }
 
+            // Pastikan cache baterai terisi sekali di awal jika masih -1
+            if (cachedBatteryTempC <= 0) {
+                refreshBatteryStateOnce()
+            }
+
             val pressure = sm.getDefaultSensor(Sensor.TYPE_PRESSURE)
             if (pressure != null) {
                 pressureSensor = pressure
                 pressureListener = object : SensorEventListener {
                     override fun onSensorChanged(event: SensorEvent) {
                         if (event.values.isNotEmpty()) {
-                            lastPressureHpa = event.values[0].toDouble()
+                            cachedPressureHpa = event.values[0].toDouble()
                         }
                     }
                     override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
@@ -158,7 +231,7 @@ class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
             sensorEventListener = object : SensorEventListener {
                 override fun onSensorChanged(event: SensorEvent) {
-                    val data = HashMap<String, Any>()
+                    val data = HashMap<String, Any?>()
                     data["timestampNs"] = event.timestamp
                     data["accuracy"] = event.accuracy
                     data["isUncalibrated"] = isUncalibrated
@@ -179,10 +252,11 @@ class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                         data["biasZMicroT"] = 0.0
                     }
 
-                    data["batteryTempC"] = getBatteryTemperature()
-                    data["isCharging"] = isCharging()
-                    data["isScreenOn"] = isScreenOn()
-                    data["pressureHpa"] = lastPressureHpa
+                    // Ambil dari cache volatile tanpa overhead IPC / syscall di loop 50 Hz
+                    data["batteryTempC"] = cachedBatteryTempC
+                    data["isCharging"] = cachedIsCharging
+                    data["isScreenOn"] = cachedIsScreenOn
+                    data["pressureHpa"] = cachedPressureHpa
 
                     events.success(data)
                 }
@@ -194,7 +268,94 @@ class MagnetometerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         }
 
         override fun onCancel(arguments: Any?) {
-            stopListening()
+            stopMagnetometerListening()
+        }
+    }
+
+    /// StreamHandler terpisah khusus data termal perangkat (baterai, hardware ambient sensor, charging)
+    /// Berjalan secara event-driven via BroadcastReceiver dan sensor listener ambient,
+    /// ditambah timer santai 2 detik saat stream aktif.
+    private inner class ThermalStreamHandler : EventChannel.StreamHandler {
+
+        private var batteryReceiver: BroadcastReceiver? = null
+        private var ambientSensor: Sensor? = null
+        private var ambientListener: SensorEventListener? = null
+        private val mainHandler = Handler(Looper.getMainLooper())
+        private var periodicRunnable: Runnable? = null
+        private var eventSink: EventChannel.EventSink? = null
+
+        override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+            eventSink = events
+            if (events == null) return
+
+            // 1. BroadcastReceiver untuk ACTION_BATTERY_CHANGED & power events
+            batteryReceiver = object : BroadcastReceiver() {
+                override fun onReceive(c: Context?, intent: Intent?) {
+                    updateBatteryFromIntent(intent)
+                    events.success(buildThermalDataMap())
+                }
+            }
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_BATTERY_CHANGED)
+                addAction(Intent.ACTION_POWER_CONNECTED)
+                addAction(Intent.ACTION_POWER_DISCONNECTED)
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_SCREEN_OFF)
+            }
+            val stickyIntent = context.registerReceiver(batteryReceiver, filter)
+            updateBatteryFromIntent(stickyIntent)
+
+            // 2. Sensor hardware suhu ambien jika tersedia (Sensor.TYPE_AMBIENT_TEMPERATURE)
+            val sm = sensorManager
+            val ambient = sm?.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE)
+            if (ambient != null) {
+                ambientSensor = ambient
+                ambientListener = object : SensorEventListener {
+                    override fun onSensorChanged(event: SensorEvent) {
+                        if (event.values.isNotEmpty()) {
+                            cachedAmbientTempHardwareC = event.values[0].toDouble()
+                            events.success(buildThermalDataMap())
+                        }
+                    }
+                    override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
+                }
+                sm.registerListener(ambientListener, ambientSensor, SensorManager.SENSOR_DELAY_NORMAL)
+            }
+
+            // Kirim snapshot pertama segera
+            events.success(buildThermalDataMap())
+
+            // 3. Polling santai setiap 2 detik untuk memeriksa arus baterai dan screen state
+            periodicRunnable = object : Runnable {
+                override fun run() {
+                    updateCurrentNow()
+                    updateScreenState()
+                    eventSink?.success(buildThermalDataMap())
+                    mainHandler.postDelayed(this, 2000L)
+                }
+            }
+            mainHandler.postDelayed(periodicRunnable!!, 2000L)
+        }
+
+        override fun onCancel(arguments: Any?) {
+            eventSink = null
+            batteryReceiver?.let {
+                try {
+                    context.unregisterReceiver(it)
+                } catch (_: Exception) {}
+            }
+            batteryReceiver = null
+
+            ambientListener?.let {
+                sensorManager?.unregisterListener(it)
+            }
+            ambientListener = null
+            ambientSensor = null
+
+            periodicRunnable?.let {
+                mainHandler.removeCallbacks(it)
+            }
+            periodicRunnable = null
         }
     }
 }

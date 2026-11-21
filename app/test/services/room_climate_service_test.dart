@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geomag/models/magnetometer_sample.dart';
+import 'package:geomag/models/weather_models.dart';
 import 'package:geomag/services/room_climate_service.dart';
 
 void main() {
@@ -20,14 +21,33 @@ void main() {
       expect(RoomClimateService.fahrenheitToCelsius(77.0), closeTo(25.0, 1e-4));
     });
 
-    test('estimateAmbientTemp mencocokkan aplikasi rujukan: baterai 35.5°C menghasilkan suhu kamar 27.0°C', () {
-      final temp = RoomClimateService.estimateAmbientTemp(
-        batteryTempC: 35.5,
-        isCharging: false,
-        isScreenOn: true,
-      );
-      // 35.5 - (3.0 + 5.5) = 27.0°C
-      expect(temp, closeTo(27.0, 0.05));
+    test('Tabel 20 s.d. 45 °C: model monoton terhadap T_bat dan tidak terkunci di 27.0', () {
+      double? prevEst;
+      final outputs = <double, double>{};
+
+      for (double t = 20.0; t <= 45.0; t += 1.0) {
+        final est = RoomClimateService.estimateAmbientTemp(
+          batteryTempC: t,
+          isCharging: false,
+          isScreenOn: true,
+        );
+
+        expect(est, isNotNull);
+        outputs[t] = est!;
+
+        if (prevEst != null) {
+          // Harus monoton naik secara ketat terhadap suhu baterai
+          expect(est, greaterThan(prevEst), reason: 'Suhu pada $t°C ($est) harus > pada ${t - 1}°C ($prevEst)');
+        }
+        prevEst = est;
+      }
+
+      // Verifikasi output bervariasi luas dan tidak macet di 27.0
+      expect(outputs[20.0], closeTo(17.0, 0.1));
+      expect(outputs[30.0], closeTo(27.0, 0.1));
+      expect(outputs[35.0], closeTo(32.0, 0.1));
+      expect(outputs[40.0], closeTo(37.0, 0.1));
+      expect(outputs[45.0], closeTo(42.0, 0.1));
     });
 
     test('evaluateThermalState mengklasifikasikan status panas ponsel dengan tepat', () {
@@ -36,14 +56,15 @@ void main() {
       expect(RoomClimateService.evaluateThermalState(35.5), DeviceThermalState.hot);
     });
 
-    test('estimateAmbientTemp menangani fallback sensor tak tersedia (<= 0)', () {
+    test('estimateAmbientTemp menangani fallback sensor tak tersedia (<= 0) dengan mengembalikan null', () {
       final temp = RoomClimateService.estimateAmbientTemp(
         batteryTempC: -1.0,
         isCharging: false,
         isScreenOn: false,
         userOffsetC: 1.5,
       );
-      expect(temp, closeTo(28.5, 0.05));
+      // Hapus fallback 27.0: sensor tidak tersedia harus bernilai null
+      expect(temp, isNull);
     });
 
     test('estimateHumidityPercent berada dalam rentang psikrometrik masuk akal', () {
@@ -77,7 +98,7 @@ void main() {
       expect(result.thermalState, DeviceThermalState.hot);
       expect(result.thermalStateLabel, 'Panas');
       expect(result.warningMessage, contains('Perangkat Anda panas'));
-      expect(result.ambientTempC, closeTo(27.0, 0.1));
+      expect(result.ambientTempC, closeTo(32.5, 0.1));
     });
 
     test('popularCities memuat daftar kota utama Indonesia', () {
@@ -97,6 +118,30 @@ void main() {
       expect(weather.temperatureC, lessThan(45.0));
       expect(weather.weatherCondition, isNotEmpty);
       expect(weather.weatherEmoji, isNotEmpty);
+    });
+
+    test('fetchOutdoorWeatherForLocation mengembalikan data dengan hourly forecast dan cache', () async {
+      final cimalaka = AdmLocation(
+        name: 'Cimalaka',
+        district: 'Kec. Cimalaka',
+        regency: 'Kab. Sumedang',
+        province: 'Jawa Barat',
+        latitude: -6.8122,
+        longitude: 107.9482,
+        adm4Code: '32.11.14.2001',
+      );
+
+      final weather = await service.fetchOutdoorWeatherForLocation(cimalaka);
+
+      expect(weather.cityName, isNotEmpty);
+      expect(weather.temperatureC, greaterThan(10.0));
+      expect(weather.temperatureC, lessThan(45.0));
+      expect(weather.sourceLabel, isNotEmpty);
+
+      // Pemanggilan kedua harus mengembalikan objek yang sama dari cache
+      final cachedWeather = await service.fetchOutdoorWeatherForLocation(cimalaka);
+      expect(cachedWeather.temperatureC, weather.temperatureC);
+      expect(cachedWeather.lastUpdated, weather.lastUpdated);
     });
   });
 }
