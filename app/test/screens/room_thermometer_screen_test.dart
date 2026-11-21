@@ -197,12 +197,36 @@ void main() {
       await tester.pumpAndSettle();
 
       // Tekan tombol Analisis Suhu
+      await tester.ensureVisible(find.text('Analisis Suhu'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Analisis Suhu'));
       await tester.pumpAndSettle();
 
       expect(find.text('Rincian Analisis Termal & Iklim'), findsOneWidget);
       expect(find.text('Suhu Baterai / Hardware'), findsOneWidget);
       expect(find.text('Suhu Kamar Terestimasi'), findsOneWidget);
+    });
+
+    testWidgets('Banner Penyesuaian Otomatis Cuaca muncul dan dapat diselaraskan', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoomThermometerScreen(service: mockService),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Memeriksa banner patokan cuaca muncul
+      expect(find.textContaining('Patokan Cuaca'), findsOneWidget);
+
+      // Mengetuk tombol Sinkron/Sesuaikan
+      final syncButton = find.byIcon(Icons.sync_rounded).first;
+      await tester.ensureVisible(syncButton);
+      await tester.pumpAndSettle();
+      await tester.tap(syncButton);
+      await tester.pumpAndSettle();
+
+      // SnackBar konfirmasi muncul
+      expect(find.textContaining('berhasil diselaraskan'), findsOneWidget);
     });
   });
 }

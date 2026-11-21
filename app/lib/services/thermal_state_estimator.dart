@@ -259,6 +259,7 @@ class ThermalStateEstimator {
     final slopeCPerMinute = slopeCPerS * 60.0;
 
     // 7. Periksa apakah jendela minimum sudah terpenuhi
+    final isAuto = _profile.deviceId.startsWith('auto_');
     if (windowDurationS < kMinWindowSeconds) {
       final currentMinute = (windowDurationS / 60.0).ceil().clamp(1, 5);
       final rawEst = sample.batteryTempC - _profile.d0 + userOffsetC;
@@ -267,8 +268,10 @@ class ThermalStateEstimator {
         estimatedTempC: rawEst,
         state: ThermalState.collectingData,
         slopeCPerMinute: slopeCPerMinute,
-        uncertaintyC: _profile.isCalibrated ? 1.5 : 3.0,
-        statusLabel: 'Mengumpulkan data... ($currentMinute/5 menit)',
+        uncertaintyC: _profile.isCalibrated ? (isAuto ? 1.0 : 1.5) : 3.0,
+        statusLabel: isAuto
+            ? 'Penyesuaian Otomatis... ($currentMinute/5 mnt)'
+            : 'Mengumpulkan data... ($currentMinute/5 menit)',
         dataCollectionProgress: '$currentMinute/5 menit',
         isCalibrated: _profile.isCalibrated,
         hardwareTempC: sample.batteryTempC,
@@ -299,15 +302,21 @@ class ThermalStateEstimator {
     } else if (slopeCPerMinute.abs() >= 0.05) {
       state = ThermalState.coolingOrWarming;
       uncertainty = _profile.isCalibrated ? 1.0 : 3.0;
-      statusLabel = _profile.isCalibrated ? 'Terkalibrasi (Dinamis Newton)' : 'Belum dikalibrasi, ±3 °C';
+      statusLabel = _profile.isCalibrated
+          ? (isAuto ? 'Penyesuaian Otomatis (Dinamis)' : 'Terkalibrasi (Dinamis Newton)')
+          : 'Belum dikalibrasi, ±3 °C';
     } else if (sample.isScreenOn) {
       state = ThermalState.activeLight;
       uncertainty = _profile.isCalibrated ? 1.0 : 3.0;
-      statusLabel = _profile.isCalibrated ? 'Terkalibrasi (Aktif Ringan)' : 'Belum dikalibrasi, ±3 °C';
+      statusLabel = _profile.isCalibrated
+          ? (isAuto ? 'Penyesuaian Otomatis (Aktif)' : 'Terkalibrasi (Aktif Ringan)')
+          : 'Belum dikalibrasi, ±3 °C';
     } else {
       state = ThermalState.steadyIdle;
       uncertainty = _profile.isCalibrated ? 0.8 : 2.5;
-      statusLabel = _profile.isCalibrated ? 'Terkalibrasi (Stabil Idle)' : 'Belum dikalibrasi, ±3 °C';
+      statusLabel = _profile.isCalibrated
+          ? (isAuto ? 'Penyesuaian Otomatis (Stabil)' : 'Terkalibrasi (Stabil Idle)')
+          : 'Belum dikalibrasi, ±3 °C';
     }
 
     // 9. Hitung nilai estimasi berdasarkan state

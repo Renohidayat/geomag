@@ -120,6 +120,9 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
       (sample) {
         if (mounted) {
           _thermalService.recordSampleForLogging(sample);
+          if (!_thermalEstimator.profile.isCalibrated && _outdoorWeather != null) {
+            _syncWithOutdoorWeather(showFeedback: false);
+          }
           final estimation = _thermalEstimator.processSample(
             sample: sample,
             userOffsetC: _calibrationOffsetC,
@@ -134,6 +137,54 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
     );
   }
 
+  /// Menyelaraskan patokan suhu ruangan secara otomatis ke suhu cuaca lingkungan.
+  void _syncWithOutdoorWeather({bool showFeedback = true}) {
+    final weather = _outdoorWeather;
+    if (weather == null) return;
+
+    final batTemp = _lastThermalSample?.batteryTempC ?? _lastSample?.batteryTempC ?? 32.0;
+    if (batTemp <= 0) return;
+
+    final d0 = (batTemp - weather.temperatureC).clamp(0.5, 12.0);
+
+    final autoProfile = ThermalCalibrationProfile(
+      version: 1,
+      deviceId: 'auto_${weather.cityName}',
+      a: 1.0,
+      b: -d0,
+      d0: d0,
+      tau: 240.0,
+      rmse: 0.8,
+      r2: 0.95,
+      calibratedAt: DateTime.now(),
+      durationMinutes: 0,
+    );
+
+    setState(() {
+      _thermalEstimator.setProfile(autoProfile);
+      if (_lastThermalSample != null) {
+        _lastEstimation = _thermalEstimator.processSample(
+          sample: _lastThermalSample!,
+          userOffsetC: _calibrationOffsetC,
+        );
+      }
+    });
+
+    _thermalService.saveCalibrationProfile(autoProfile);
+
+    if (showFeedback && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Suhu ruangan berhasil diselaraskan ke patokan cuaca ${weather.cityName} (${weather.temperatureC.toStringAsFixed(1)} °C)!',
+          ),
+          backgroundColor: const Color(0xFF00A8B5),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   Future<void> _loadOutdoorWeather({bool forceRefresh = false}) async {
     setState(() => _isLoadingWeather = true);
     try {
@@ -146,6 +197,13 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
           _outdoorWeather = data;
           _isLoadingWeather = false;
         });
+
+        // Penyesuaian otomatis: jika profil belum dikalibrasi manual oleh pengguna,
+        // selaraskan patokan suhu ruangan ke suhu cuaca lingkungan aktual secara instan
+        if (!_thermalEstimator.profile.isCalibrated ||
+            _thermalEstimator.profile.deviceId.startsWith('auto_')) {
+          _syncWithOutdoorWeather(showFeedback: false);
+        }
       }
     } catch (_) {
       if (mounted) {
@@ -468,6 +526,76 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
                         fontWeight: FontWeight.w600,
                         color: Color(0xFFE65100),
                       ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // 2B. Banner Penyesuaian Otomatis Patokan Cuaca Lingkungan
+          if (_outdoorWeather != null) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00A8B5).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFF00A8B5).withValues(alpha: 0.35),
+                  width: 1.0,
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_awesome_rounded, color: Color(0xFF00A8B5), size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Patokan Cuaca: ${_outdoorWeather!.cityName} (${_outdoorWeather!.temperatureC.toStringAsFixed(1)} °C)',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF00838F),
+                          ),
+                        ),
+                        Text(
+                          _thermalEstimator.profile.deviceId.startsWith('auto_')
+                              ? 'Suhu ruangan otomatis membaca patokan cuaca lingkungan.'
+                              : 'Ketuk selaraskan untuk menjadikan suhu cuaca sebagai patokan.',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  FilledButton.tonal(
+                    onPressed: () => _syncWithOutdoorWeather(showFeedback: true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF00A8B5).withValues(alpha: 0.2),
+                      foregroundColor: const Color(0xFF00838F),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.sync_rounded, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          _thermalEstimator.profile.deviceId.startsWith('auto_')
+                              ? 'Sinkron'
+                              : 'Sesuaikan',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -1102,6 +1230,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
         return _CalibrationWizardBottomSheet(
           thermalService: _thermalService,
           currentBatteryTempC: _lastThermalSample?.batteryTempC ?? 32.0,
+          outdoorWeather: _outdoorWeather,
           onCalibrationApplied: (profile) {
             setState(() {
               _thermalEstimator.setProfile(profile);
@@ -2238,11 +2367,13 @@ class _SpeedometerDialPainter extends CustomPainter {
 class _CalibrationWizardBottomSheet extends StatefulWidget {
   final DeviceThermalService thermalService;
   final double currentBatteryTempC;
+  final OutdoorWeatherData? outdoorWeather;
   final ValueChanged<ThermalCalibrationProfile> onCalibrationApplied;
 
   const _CalibrationWizardBottomSheet({
     required this.thermalService,
     required this.currentBatteryTempC,
+    this.outdoorWeather,
     required this.onCalibrationApplied,
   });
 
@@ -2272,7 +2403,10 @@ class _CalibrationWizardBottomSheetState
   void initState() {
     super.initState();
     _lastBatTemp = widget.currentBatteryTempC > 0 ? widget.currentBatteryTempC : 32.0;
-    _refTempController = TextEditingController(text: '26.5');
+    final defaultRef = widget.outdoorWeather != null
+        ? widget.outdoorWeather!.temperatureC.toStringAsFixed(1)
+        : '25.0';
+    _refTempController = TextEditingController(text: defaultRef);
   }
 
   @override
@@ -2417,6 +2551,21 @@ class _CalibrationWizardBottomSheetState
               style: TextStyle(fontSize: 12, height: 1.4),
             ),
             const SizedBox(height: 14),
+            if (widget.outdoorWeather != null) ...[
+              ActionChip(
+                avatar: const Icon(Icons.cloud_outlined, size: 16, color: Color(0xFF00A8B5)),
+                label: Text(
+                  'Gunakan Patokan Cuaca ${widget.outdoorWeather!.cityName}: ${widget.outdoorWeather!.temperatureC.toStringAsFixed(1)} °C',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF00838F)),
+                ),
+                onPressed: () {
+                  setState(() {
+                    _refTempController.text = widget.outdoorWeather!.temperatureC.toStringAsFixed(1);
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+            ],
             Row(
               children: [
                 Expanded(
