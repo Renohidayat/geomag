@@ -5,6 +5,7 @@ Semua perubahan penting dicatat di sini.
 ## [Belum dirilis]
 
 ### Diperbaiki
+- Penghapusan badge mahkota/premium tiruan di AppBar Termometer untuk tampilan bilah navigasi yang bersih, profesional, dan minimalis (#68)
 - Perbaikan bug pembacaan suhu kamar yang selalu terkunci di nilai identik 27,0 °C akibat saling meniadakan aljabar formula kompensasi internal ($T_{est} = T_{bat} - (3.0 + (T_{bat} - 30.0)) \equiv 27.0^\circ\text{C}$); diganti dengan estimator keadaan termal dinamis berbasis hukum pendinginan Newton (#63)
 - Pemisahan total aliran data suhu baterai dari loop magnetometer 50 Hz ke `EventChannel` termal terpisah (`com.geomag/thermal_event`) di Android native Kotlin `MagnetometerPlugin.kt`, menghapus pemanggilan berulang `registerReceiver` di dalam loop sensor magnetometer (#63)
 - Pembaruan istilah antarmuka dari "Suhu Ruangan / Dalam Ruangan" menjadi "Suhu Sekitar" dan "Cuaca Wilayah", memperluas cakupan penggunaan sebagai pendeteksi hawa suhu lingkungan bebas (indoor, outdoor, tenda survei, posko, lapangan terbuka) (#63)

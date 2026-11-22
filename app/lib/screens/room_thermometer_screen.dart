@@ -355,16 +355,6 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
         ),
         centerTitle: true,
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 16),
-            child: Icon(
-              Icons.workspace_premium_rounded,
-              color: Color(0xFFFFA000),
-              size: 26,
-            ),
-          ),
-        ],
       ),
       body: SafeArea(
         child: Column(
