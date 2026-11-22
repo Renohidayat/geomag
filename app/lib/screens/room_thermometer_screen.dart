@@ -11,6 +11,7 @@ import '../services/device_thermal_service.dart';
 import '../services/location_service.dart';
 import '../services/magnetometer_service.dart';
 import '../services/room_climate_service.dart';
+import '../services/smart_notification_service.dart';
 import '../services/thermal_state_estimator.dart';
 
 /// Layar Termometer Suhu Sekitar & Cuaca Wilayah.
@@ -25,6 +26,7 @@ class RoomThermometerScreen extends StatefulWidget {
   final ThermalStateEstimator? thermalEstimator;
   final LocationService? locationService;
   final Adm4Service? adm4Service;
+  final SmartNotificationService? notificationService;
 
   const RoomThermometerScreen({
     super.key,
@@ -34,6 +36,7 @@ class RoomThermometerScreen extends StatefulWidget {
     this.thermalEstimator,
     this.locationService,
     this.adm4Service,
+    this.notificationService,
   });
 
   @override
@@ -47,6 +50,7 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
   late final ThermalStateEstimator _thermalEstimator;
   late final LocationService _locationService;
   late final Adm4Service _adm4Service;
+  late final SmartNotificationService _notificationService;
 
   StreamSubscription<MagnetometerSample>? _subscription;
   StreamSubscription<DeviceThermalSample>? _thermalSubscription;
@@ -76,10 +80,12 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
     _thermalEstimator = widget.thermalEstimator ?? ThermalStateEstimator();
     _locationService = widget.locationService ?? LocationService();
     _adm4Service = widget.adm4Service ?? Adm4Service();
+    _notificationService = widget.notificationService ?? SmartNotificationService();
 
     // Default lokasi: Cimalaka, Sumedang (Jawa Barat)
     _selectedLocation = Adm4Service.defaultLocations.first;
 
+    _notificationService.initChannels();
     _initThermalService();
     _subscribeSensors();
     _loadOutdoorWeather();
@@ -111,6 +117,11 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
               );
             }
           });
+
+          // Evaluasi notifikasi darurat medan magnet kritis (> 100 µT)
+          _notificationService.checkAndDispatchMagneticAlert(
+            totalFieldMicroT: sample.totalFieldMicroT,
+          );
         }
       },
       onError: (_) {},
@@ -131,6 +142,16 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
             _lastThermalSample = sample;
             _lastEstimation = estimation;
           });
+
+          // Evaluasi notifikasi cerdas hawa panas (dengan filter game & charging)
+          if (estimation.estimatedTempC != null) {
+            _notificationService.checkAndDispatchThermalAlert(
+              ambientTempC: estimation.estimatedTempC!,
+              batteryTempC: sample.batteryTempC,
+              isCharging: sample.isCharging,
+              currentNowMa: sample.currentNowMa,
+            );
+          }
         }
       },
       onError: (_) {},
@@ -2106,7 +2127,136 @@ class _RoomThermometerScreenState extends State<RoomThermometerScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Tips Pengukuran Akurat
+          // Notifikasi Cerdas Latar Belakang
+          Card(
+            elevation: 1,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.notifications_active_rounded, color: Color(0xFF00A8B5)),
+                      SizedBox(width: 8),
+                      Text(
+                        'Notifikasi Cerdas Latar Belakang',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Sistem cerdas membedakan panas mesin internal (game / ngecas) dengan '
+                    'hawa panas lingkungan nyata agar bebas alarm palsu.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                    ),
+                  ),
+                  const Divider(height: 24),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text(
+                      'Peringatan Hawa Panas (≥ 35 °C)',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    subtitle: const Text(
+                      'Hanya berbunyi jika hawa sekitar beneran panas. Otomatis senyap saat Anda sedang main game berat atau mengisi daya.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    value: _notificationService.config.isThermalAlertEnabled,
+                    activeTrackColor: const Color(0xFF00A8B5),
+                    onChanged: (val) {
+                      setState(() {
+                        _notificationService.updateConfig(
+                          _notificationService.config.copyWith(isThermalAlertEnabled: val),
+                        );
+                      });
+                    },
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text(
+                      'Peringatan Medan Magnet Kritis (> 100 µT)',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    subtitle: const Text(
+                      'Alarm darurat saat terdeteksi fluks magnetik sangat kuat di dekat HP (speaker besar / kabel trafo bocor).',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    value: _notificationService.config.isMagneticAlertEnabled,
+                    activeTrackColor: const Color(0xFF00A8B5),
+                    onChanged: (val) {
+                      setState(() {
+                        _notificationService.updateConfig(
+                          _notificationService.config.copyWith(isMagneticAlertEnabled: val),
+                        );
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final success = await _notificationService.triggerTestNotification(isThermal: true);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(success
+                                      ? 'Notifikasi uji coba hawa panas berhasil dikirim!'
+                                      : 'Gagal mengirim notifikasi (periksa izin notifikasi HP).'),
+                                  backgroundColor: const Color(0xFF00A8B5),
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.thermostat_rounded, size: 16),
+                          label: const Text('Tes Suhu', style: TextStyle(fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF00A8B5),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final success = await _notificationService.triggerTestNotification(isThermal: false);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(success
+                                      ? 'Notifikasi uji coba medan magnet berhasil dikirim!'
+                                      : 'Gagal mengirim notifikasi (periksa izin notifikasi HP).'),
+                                  backgroundColor: Colors.deepOrange,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.sensors_rounded, size: 16),
+                          label: const Text('Tes Magnet', style: TextStyle(fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.deepOrange,
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
           Card(
             elevation: 0,
             color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
