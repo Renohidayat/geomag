@@ -52,9 +52,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Memeriksa judul AppBar dan ikon mahkota
+      // Memeriksa judul AppBar (ikon mahkota/badge dihapus agar AppBar bersih)
       expect(find.text('Termometer'), findsOneWidget);
-      expect(find.byIcon(Icons.workspace_premium_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.workspace_premium_rounded), findsNothing);
 
       // Memeriksa toggle unit
       expect(find.text('°C'), findsWidgets);
