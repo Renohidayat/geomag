@@ -58,3 +58,11 @@ venv/
 
 # Antigravity
 .gemini/
+
+# File dokumen & instruksi agen lokal (hanya di folder lokal, tidak di-upload ke repo)
+AGENTS.md
+docs/
+Rencana Aplikasi Magnetometer Geofisika (Flutter Android).md
+*.apk
+*.aab
+
